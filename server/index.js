@@ -1205,8 +1205,8 @@ app.get('/api/mcp', (req, res) => {
         }
 
         const aggregated = loadAggregatedConfig();
-        if (aggregated.mcpServers) {
-            for (const [name, config] of Object.entries(aggregated.mcpServers)) {
+        if (aggregated.mcp) {
+            for (const [name, config] of Object.entries(aggregated.mcp)) {
                 if (!mcpMap.has(name)) {
                     mcpMap.set(name, {
                         name,
