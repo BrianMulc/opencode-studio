@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.0] - 2026-05-09
+
+### Fixed
+- **OpenCode Config**: Expose config and rules resolution context for proper settings handling (#20).
+- **MCP Servers**: Fix MCP servers object mapping to correctly parse server configurations (#19).
+
+### Changed
+- **Cleanup**: Remove internal planning and agent artifacts from the repository.
+- **Version**: Bumped from 1.17.0 to 2.3.0.
+
 ## [1.16.0] - 2026-01-30
 
 ### Changed
