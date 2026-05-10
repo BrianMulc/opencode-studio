@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { useApp } from "@/lib/context";
 import { PluginCard } from "@/components/plugin-card";
 import { AddPluginDialog } from "@/components/add-plugin-dialog";
@@ -12,15 +13,28 @@ import { deletePlugin, deletePluginFromConfig, getActiveGooglePlugin } from "@/l
 import { toast } from "sonner";
 import { Search } from "@nsmr/pixelart-react";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { PageHelp } from "@/components/page-help";
 import { PageHelpDialog } from "@/components/page-help-dialog";
 import { PresetsManager } from "@/components/presets-manager";
 
 export default function PluginsPage() {
+  const t = useTranslations('plugins');
   const { plugins, loading, refreshData, togglePlugin } = useApp();
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [activeGPlugin, setActiveGPlugin] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ name: string, type: 'file' | 'npm' } | null>(null);
 
   useEffect(() => {
     getActiveGooglePlugin().then(res => setActiveGPlugin(res.activePlugin)).catch(() => {});
@@ -41,34 +55,40 @@ export default function PluginsPage() {
     try {
       await togglePlugin(name);
       const plugin = plugins.find(p => p.name === name);
-      toast.success(`${name} ${plugin?.enabled ? "disabled" : "enabled"}`);
+      toast.success(plugin?.enabled ? t('toggleDisabled', { name }) : t('toggleEnabled', { name }));
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || "Unknown error";
-      toast.error(`Failed to toggle plugin: ${msg}`);
+      const msg = err.response?.data?.error || err.message || t('unknownError');
+      toast.error(t('toggleFailed', { error: msg }));
     }
   };
 
-  const handleDelete = async (name: string, type: 'file' | 'npm') => {
-    if (!confirm(`Delete ${name}?`)) return;
+  const handleDelete = (name: string, type: 'file' | 'npm') => {
+    setDeleteTarget({ name, type });
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
     try {
-      if (type === 'npm') {
-        await deletePluginFromConfig(name);
+      if (deleteTarget.type === 'npm') {
+        await deletePluginFromConfig(deleteTarget.name);
       } else {
-        await deletePlugin(name);
+        await deletePlugin(deleteTarget.name);
       }
-      toast.success(`${name} deleted`);
+      toast.success(t('deleted', { name: deleteTarget.name }));
+      setDeleteDialogOpen(false);
       refreshData();
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || "Unknown error";
-      toast.error(`Failed to delete plugin: ${msg}`);
+      const msg = err.response?.data?.error || err.message || t('unknownError');
+      toast.error(t('deleteFailed', { error: msg }));
     }
   };
 
-  if (loading) {
+if (loading) {
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-<PageHelp title="Plugins" docUrl="https://opencode.ai/docs/plugins" docTitle="Plugins Documentation" />
+          <PageHelp title={t('title')} docUrl="https://opencode.ai/docs/plugins" docTitle={t('docTitleFull')} />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
@@ -80,9 +100,9 @@ export default function PluginsPage() {
   }
 
   return (
-      <div className="space-y-4">
-        <div className="flex justify-between items-center">
-        <PageHelp title="Plugins" docUrl="https://opencode.ai/docs" docTitle="Plugins" />
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <PageHelp title={t('title')} docUrl="https://opencode.ai/docs" docTitle={t('docTitle')} />
         <div className="flex gap-2">
           <PresetsManager />
           <BulkImportDialog 
@@ -100,38 +120,54 @@ export default function PluginsPage() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search plugins..."
+            placeholder={t('searchPlaceholder')}
             className="pl-9"
           />
         </div>
       )}
 
       {plugins.length === 0 ? (
-        <p className="text-muted-foreground italic">No plugins found.</p>
+        <p className="text-muted-foreground italic">{t('noPlugins')}</p>
       ) : filteredPlugins.length === 0 ? (
-        <p className="text-muted-foreground italic">No plugins match "{search}"</p>
+        <p className="text-muted-foreground italic">{t('noMatch', { search })}</p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {filteredPlugins.map((plugin) => {
-             const isGemini = plugin.name.includes('gemini-auth');
-             const isAntigravity = plugin.name.includes('antigravity-auth');
-             const locked = (isGemini && activeGPlugin === 'antigravity') || (isAntigravity && activeGPlugin === 'gemini');
-             
-             const displayPlugin = locked ? { ...plugin, enabled: false } : plugin;
-             
-             return (
-                <PluginCard
-                  key={plugin.name}
-                  plugin={displayPlugin}
-                  locked={locked}
-                  onToggle={() => handleToggle(plugin.name)}
-                  onDelete={() => handleDelete(plugin.name, plugin.type)}
-                  onClick={plugin.type === 'file' ? () => handleOpen(plugin.name, plugin.type) : undefined}
-                />
-             );
+            const isGemini = plugin.name.includes('gemini-auth');
+            const isAntigravity = plugin.name.includes('antigravity-auth');
+            const locked = (isGemini && activeGPlugin === 'antigravity') || (isAntigravity && activeGPlugin === 'gemini');
+            
+            const displayPlugin = locked ? { ...plugin, enabled: false } : plugin;
+            
+            return (
+              <PluginCard
+                key={plugin.name}
+                plugin={displayPlugin}
+                locked={locked}
+                onToggle={() => handleToggle(plugin.name)}
+                onDelete={() => handleDelete(plugin.name, plugin.type)}
+                onClick={plugin.type === 'file' ? () => handleOpen(plugin.name, plugin.type) : undefined}
+              />
+            );
           })}
         </div>
       )}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('deleteTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('deleteConfirm', { name: deleteTarget?.name || '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm}>
+              {t('delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

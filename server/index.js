@@ -13,6 +13,47 @@ const profileManager = require('./profile-manager');
 const SERVER_VERSION = pkg.version;
 const MIN_CLIENT_VERSION = '1.16.0';
 
+const ERROR_CODES = {
+  CONFIG_NOT_FOUND: "Config not found",
+  INVALID_PERMISSION: "Invalid permission value. Must be ask, allow, or deny.",
+  MISSING_AGENT_NAME: "Missing agent name",
+  INVALID_AGENT_NAME: "Invalid agent name",
+  NO_CONFIG_PATH: "No config path found",
+  INVALID_NAME_OR_DURATION: "Invalid name or duration",
+  INVALID_STATE: "Invalid state",
+  NO_CLOUD_PROVIDER: "No cloud provider connected",
+  NO_SYNC_FILE: "No sync file found in cloud",
+  MISSING_AGENTS_PREFS: "Missing preferences.agents",
+  GH_NOT_LOGGED_IN: "Not logged in to gh CLI. Run: gh auth login",
+  GH_USER_FAILED: "Failed to get GitHub user",
+  NO_REPO_CONFIGURED: "No repo configured",
+  NO_BACKUP_IN_REPO: "No opencode backup found in repository",
+  INVALID_SKILL_NAME: "Invalid skill name",
+  NOT_FOUND: "Not found",
+  NO_CONFIG_FOR_SKILL: "No active config or global location to create skill",
+  SKILL_NOT_FOUND: "Skill not found",
+  PLUGIN_NOT_FOUND: "Plugin not found",
+  NO_CONFIG_FOR_PLUGIN: "No active config to create plugin",
+  NO_AUTH_FOR_PROVIDER: "No current auth for provider",
+  PROFILE_NOT_FOUND: "Profile not found",
+  FAILED_OPEN_TERMINAL: "Failed to open terminal",
+  NO_TERMINAL: "No terminal emulator found",
+  NO_ACCOUNTS_IN_POOL: "No accounts in pool",
+  NO_AVAILABLE_ACCOUNTS: "No available accounts (all in cooldown or expired)",
+  PROFILE_FILE_NOT_FOUND: "Profile file not found",
+  INVALID_PROVIDER_OR_LIMIT: "Invalid provider or limit",
+  OAUTH_IN_PROGRESS: "OAuth flow already in progress",
+  OAUTH_TIMEOUT: "OAuth timeout (2 minutes)",
+  PRESET_NOT_FOUND: "Preset not found",
+  CLIENT_OUTDATED: "Client version outdated",
+  PROFILE_EXISTS: "Profile already exists",
+  CANNOT_DELETE_ACTIVE: "Cannot delete active profile",
+  CANNOT_DELETE_DEFAULT: "Cannot delete default profile",
+  NO_OPENCODE_CONFIG_PATH: "No opencode config path found",
+  FAILED_FETCH_USAGE: "Failed to fetch usage statistics",
+  MISSING_GEMINI_OAUTH_CLIENT: "Missing Gemini OAuth client_id. Set GEMINI_CLIENT_ID or mcp.google.oauth.clientId.",
+};
+
 function compareVersions(current, minimum) {
     const c = current.split('.').map(Number);
     const m = minimum.split('.').map(Number);
@@ -90,6 +131,9 @@ app.use((req, res, next) => {
 });
 
 const ALLOWED_ORIGINS = [
+        'http://192.168.10.100:1080',
+    /^http:\/\/192\.168\..+:108\d$/,
+    /^http:\/\/192\.168\.10\.\d{1,3}:108\d$/,
     'http://localhost:1080',
     'http://127.0.0.1:1080',
     /^http:\/\/localhost:108\d$/,
@@ -116,7 +160,7 @@ app.use((req, res, next) => {
     const clientVersion = req.headers['x-client-version'];
     if (clientVersion && compareVersions(clientVersion, MIN_CLIENT_VERSION) < 0) {
         return res.status(426).json({
-            error: 'Client version outdated',
+            error: ERROR_CODES.CLIENT_OUTDATED, code: 'CLIENT_OUTDATED',
             message: `Your client version (${clientVersion}) is no longer supported. Please upgrade to ${MIN_CLIENT_VERSION} or later.`,
             minRequired: MIN_CLIENT_VERSION,
             current: SERVER_VERSION
@@ -558,8 +602,11 @@ const getPaths = () => {
     const home = os.homedir();
     let candidates = [
         path.join(home, '.config', 'opencode', 'opencode.json'),
+        path.join(home, '.config', 'opencode', 'opencode.jsonc'),
         path.join(home, '.local', 'share', 'opencode', 'opencode.json'),
+        path.join(home, '.local', 'share', 'opencode', 'opencode.jsonc'),
         path.join(home, '.opencode', 'opencode.json'),
+        path.join(home, '.opencode', 'opencode.jsonc'),
     ];
     if (platform === 'win32') {
         candidates.push(path.join(process.env.APPDATA, 'opencode', 'opencode.json'));
@@ -576,9 +623,12 @@ const getPaths = () => {
     let manualPath = studioConfig.configPath;
 
     if (manualPath && fs.existsSync(manualPath) && fs.statSync(manualPath).isDirectory()) {
-        const potentialFile = path.join(manualPath, 'opencode.json');
-        if (fs.existsSync(potentialFile)) {
-            manualPath = potentialFile;
+        const potentialJson = path.join(manualPath, 'opencode.json');
+        const potentialJsonc = path.join(manualPath, 'opencode.jsonc');
+        if (fs.existsSync(potentialJson)) {
+            manualPath = potentialJson;
+        } else if (fs.existsSync(potentialJsonc)) {
+            manualPath = potentialJsonc;
         }
     }
 
@@ -601,7 +651,12 @@ const getPaths = () => {
 const getOhMyOpenCodeConfigPath = () => {
     const cp = getConfigPath();
     if (!cp) return null;
-    return path.join(path.dirname(cp), 'oh-my-opencode.json');
+    const dir = path.dirname(cp);
+    const newPath = path.join(dir, 'oh-my-openagent.json');
+    const oldPath = path.join(dir, 'oh-my-opencode.json');
+    if (fs.existsSync(newPath)) return newPath;
+    if (fs.existsSync(oldPath)) return oldPath;
+    return newPath;
 };
 
 const getConfigPath = () => getPaths().current;
@@ -1174,14 +1229,14 @@ app.post('/api/paths', (req, res) => {
 
 app.get('/api/config', (req, res) => {
     const config = loadConfig();
-    if (!config) return res.status(404).json({ error: 'Config not found' });
+    if (!config) return res.status(404).json({ error: ERROR_CODES.CONFIG_NOT_FOUND, code: 'CONFIG_NOT_FOUND' });
     res.json(config);
 });
 
 app.post('/api/config', (req, res) => {
     try {
         if (!validatePermissionValue(req.body?.permission)) {
-            return res.status(400).json({ error: 'Invalid permission value. Must be ask, allow, or deny.' });
+            return res.status(400).json({ error: ERROR_CODES.INVALID_PERMISSION, code: 'INVALID_PERMISSION' });
         }
         saveConfig(req.body);
         triggerGitHubAutoSync();
@@ -1276,6 +1331,7 @@ const aggregateAgents = () => {
     const roots = getSearchRoots();
     
     for (const root of roots) {
+        // Read from opencode.json (agent field - singular)
         const configPath = path.join(root, 'opencode.json');
         if (fs.existsSync(configPath)) {
             try {
@@ -1295,6 +1351,29 @@ const aggregateAgents = () => {
                 }
             } catch (err) {
                 console.error(`Failed to read agent config from ${configPath}:`, err.message);
+            }
+        }
+        
+        // Read from oh-my-openagent.json (agents field - plural)
+        const omoConfigPath = path.join(root, 'oh-my-openagent.json');
+        if (fs.existsSync(omoConfigPath)) {
+            try {
+                const content = JSON.parse(fs.readFileSync(omoConfigPath, 'utf8'));
+                const configAgents = content.agents || {};
+                for (const [name, agentConfig] of Object.entries(configAgents)) {
+                    if (!agentMap.has(name)) {
+                        agentMap.set(name, {
+                            name,
+                            source: 'json-config',
+                            configPath: root,
+                            ...agentConfig,
+                            permission: agentConfig.permission || agentConfig.permissions,
+                            permissions: agentConfig.permission || agentConfig.permissions
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error(`Failed to read agent config from ${omoConfigPath}:`, err.message);
             }
         }
     }
@@ -1360,8 +1439,8 @@ app.get('/api/agents', (req, res) => {
 app.post('/api/agents', (req, res) => {
     try {
         const { name, config: agentConfig, source, scope } = req.body || {};
-        if (!name || typeof name !== 'string') return res.status(400).json({ error: 'Missing agent name' });
-        if (!/^[a-zA-Z0-9 _-]+$/.test(name)) return res.status(400).json({ error: 'Invalid agent name' });
+        if (!name || typeof name !== 'string') return res.status(400).json({ error: ERROR_CODES.MISSING_AGENT_NAME, code: 'MISSING_AGENT_NAME' });
+        if (!/^[a-zA-Z0-9 _-]+$/.test(name)) return res.status(400).json({ error: ERROR_CODES.INVALID_AGENT_NAME, code: 'INVALID_AGENT_NAME' });
 
         const config = loadConfig() || {};
         if (!config.agent) config.agent = {};
@@ -1557,7 +1636,7 @@ app.post('/api/project/rules', (req, res) => {
     try {
         const { content, source } = req.body || {};
         const configPath = getConfigPath();
-        if (!configPath) return res.status(400).json({ error: 'No config path found' });
+        if (!configPath) return res.status(400).json({ error: ERROR_CODES.NO_CONFIG_PATH, code: 'NO_CONFIG_PATH' });
 
         const targetName = source === 'CLAUDE.md' ? 'CLAUDE.md' : 'AGENTS.md';
         const found = findRulesFile();
@@ -1657,7 +1736,7 @@ app.get('/api/cooldowns', (req, res) => {
 
 app.post('/api/cooldowns', (req, res) => {
     const { name, duration } = req.body;
-    if (!name || typeof duration !== 'number') return res.status(400).json({ error: 'Invalid name or duration' });
+    if (!name || typeof duration !== 'number') return res.status(400).json({ error: ERROR_CODES.INVALID_NAME_OR_DURATION, code: 'INVALID_NAME_OR_DURATION' });
     const studio = loadStudioConfig();
     if (!studio.cooldownRules) studio.cooldownRules = [];
     
@@ -1803,7 +1882,7 @@ app.post('/api/sync/dropbox/callback', async (req, res) => {
         const studio = loadStudioConfig();
         
         if (state !== studio.oauthState) {
-            return res.status(400).json({ error: 'Invalid state' });
+            return res.status(400).json({ error: ERROR_CODES.INVALID_STATE, code: 'INVALID_STATE' });
         }
         const redirectUri = studio.oauthRedirectUri || 'http://localhost:3000/settings';
         delete studio.oauthState;
@@ -1841,7 +1920,7 @@ app.post('/api/sync/push', async (req, res) => {
     try {
         const studio = loadStudioConfig();
         if (!studio.cloudProvider || !studio.cloudToken) {
-            return res.status(400).json({ error: 'No cloud provider connected' });
+            return res.status(400).json({ error: ERROR_CODES.NO_CLOUD_PROVIDER, code: 'NO_CLOUD_PROVIDER' });
         }
         
         const backup = buildBackupData();
@@ -1880,7 +1959,7 @@ app.post('/api/sync/pull', async (req, res) => {
     try {
         const studio = loadStudioConfig();
         if (!studio.cloudProvider || !studio.cloudToken) {
-            return res.status(400).json({ error: 'No cloud provider connected' });
+            return res.status(400).json({ error: ERROR_CODES.NO_CLOUD_PROVIDER, code: 'NO_CLOUD_PROVIDER' });
         }
         
         let content;
@@ -1896,7 +1975,7 @@ app.post('/api/sync/pull', async (req, res) => {
             
             if (!response.ok) {
                 if (response.status === 409) {
-                    return res.status(404).json({ error: 'No sync file found in cloud' });
+                    return res.status(404).json({ error: ERROR_CODES.NO_SYNC_FILE, code: 'NO_SYNC_FILE' });
                 }
                 const err = await response.text();
                 return res.status(400).json({ error: `Dropbox download failed: ${err}` });
@@ -2000,7 +2079,7 @@ app.post('/api/ohmyopencode', (req, res) => {
     try {
         const { preferences } = req.body;
         if (!preferences || !preferences.agents) {
-            return res.status(400).json({ error: 'Missing preferences.agents' });
+            return res.status(400).json({ error: ERROR_CODES.MISSING_AGENTS_PREFS, code: 'MISSING_AGENTS_PREFS' });
         }
         
         const studio = loadStudioConfig();
@@ -2305,10 +2384,10 @@ app.post('/api/github/restore', async (req, res) => {
     let tempDir = null;
     try {
         const token = await getGitHubToken();
-        if (!token) return res.status(400).json({ error: 'Not logged in to gh CLI. Run: gh auth login' });
+        if (!token) return res.status(400).json({ error: ERROR_CODES.GH_NOT_LOGGED_IN, code: 'GH_NOT_LOGGED_IN' });
         
         const user = await getGitHubUser(token);
-        if (!user) return res.status(400).json({ error: 'Failed to get GitHub user' });
+        if (!user) return res.status(400).json({ error: ERROR_CODES.GH_USER_FAILED, code: 'GH_USER_FAILED' });
         
         const { owner, repo, branch } = req.body;
         const studio = loadStudioConfig();
@@ -2317,12 +2396,12 @@ app.post('/api/github/restore', async (req, res) => {
         const finalRepo = repo || studio.githubBackup?.repo;
         const finalBranch = branch || studio.githubBackup?.branch || 'main';
         
-        if (!finalRepo) return res.status(400).json({ error: 'No repo configured' });
+        if (!finalRepo) return res.status(400).json({ error: ERROR_CODES.NO_REPO_CONFIGURED, code: 'NO_REPO_CONFIGURED' });
         
         const repoName = `${finalOwner}/${finalRepo}`;
         
         const opencodeConfig = getConfigPath();
-        if (!opencodeConfig) return res.status(400).json({ error: 'No opencode config path found' });
+        if (!opencodeConfig) return res.status(400).json({ error: ERROR_CODES.NO_OPENCODE_CONFIG_PATH, code: 'NO_OPENCODE_CONFIG_PATH' });
         
         const opencodeDir = path.dirname(opencodeConfig);
         const studioDir = path.join(HOME_DIR, '.config', 'opencode-studio');
@@ -2337,7 +2416,7 @@ app.post('/api/github/restore', async (req, res) => {
         
         if (!fs.existsSync(backupOpencodeDir)) {
             fs.rmSync(tempDir, { recursive: true });
-            return res.status(400).json({ error: 'No opencode backup found in repository' });
+            return res.status(400).json({ error: ERROR_CODES.NO_BACKUP_IN_REPO, code: 'NO_BACKUP_IN_REPO' });
         }
         
         copyDirContents(backupOpencodeDir, opencodeDir);
@@ -2415,7 +2494,7 @@ app.get('/api/skills', (req, res) => {
 app.get('/api/skills/:name', (req, res) => {
     const { name } = req.params;
     if (!/^[a-zA-Z0-9_-s]+$/.test(name)) {
-        return res.status(400).json({ error: 'Invalid skill name' });
+        return res.status(400).json({ error: ERROR_CODES.INVALID_SKILL_NAME, code: 'INVALID_SKILL_NAME' });
     }
 
     for (const dirInfo of getSkillDirs()) {
@@ -2430,13 +2509,13 @@ app.get('/api/skills/:name', (req, res) => {
             }
         }
     }
-    res.status(404).json({ error: 'Not found' });
+    res.status(404).json({ error: ERROR_CODES.NOT_FOUND, code: 'NOT_FOUND' });
 });
 
 app.post('/api/skills/:name', (req, res) => {
     const { name } = req.params;
     if (!/^[a-zA-Z0-9_-s]+$/.test(name)) {
-        return res.status(400).json({ error: 'Invalid skill name' });
+        return res.status(400).json({ error: ERROR_CODES.INVALID_SKILL_NAME, code: 'INVALID_SKILL_NAME' });
     }
 
     let targetDir = null;
@@ -2457,7 +2536,7 @@ app.post('/api/skills/:name', (req, res) => {
              const roots = getSearchRoots();
              const globalRoot = roots.find(r => r.includes('.config') || r.includes('opencode'));
              if (globalRoot) targetDir = path.join(globalRoot, 'skill', name);
-             else return res.status(404).json({ error: 'No active config or global location to create skill' });
+             else return res.status(404).json({ error: ERROR_CODES.NO_CONFIG_FOR_SKILL, code: 'NO_CONFIG_FOR_SKILL' });
         } else {
             targetDir = path.join(activeDir, name);
         }
@@ -2476,7 +2555,7 @@ app.post('/api/skills/:name', (req, res) => {
 app.delete('/api/skills/:name', (req, res) => {
     const { name } = req.params;
     if (!/^[a-zA-Z0-9_-s]+$/.test(name)) {
-        return res.status(400).json({ error: 'Invalid skill name' });
+        return res.status(400).json({ error: ERROR_CODES.INVALID_SKILL_NAME, code: 'INVALID_SKILL_NAME' });
     }
 
     let deleted = false;
@@ -2591,7 +2670,7 @@ app.get('/api/plugins/:name', (req, res) => {
             }
         }
     }
-    res.status(404).json({ error: 'Plugin not found' });
+    res.status(404).json({ error: ERROR_CODES.PLUGIN_NOT_FOUND, code: 'PLUGIN_NOT_FOUND' });
 });
 
 app.post('/api/plugins/:name', (req, res) => {
@@ -2622,7 +2701,7 @@ app.post('/api/plugins/:name', (req, res) => {
         if (globalRoot) pd = path.join(globalRoot, 'plugin');
     }
 
-    if (!pd) return res.status(404).json({ error: 'No active config to create plugin' });
+    if (!pd) return res.status(404).json({ error: ERROR_CODES.NO_CONFIG_FOR_PLUGIN, code: 'NO_CONFIG_FOR_PLUGIN' });
     
     if (!fs.existsSync(pd)) fs.mkdirSync(pd, { recursive: true });
     const filePath = path.join(pd, name.endsWith('.js') || name.endsWith('.ts') ? name : name + '.js');
@@ -2659,7 +2738,7 @@ app.delete('/api/plugins/:name', (req, res) => {
     if (deleted) {
         triggerGitHubAutoSync();
         res.json({ success: true });
-    } else res.status(404).json({ error: 'Plugin not found' });
+    } else res.status(404).json({ error: ERROR_CODES.PLUGIN_NOT_FOUND, code: 'PLUGIN_NOT_FOUND' });
 });
 
 app.post('/api/plugins/:name/toggle', (req, res) => {
@@ -2926,7 +3005,7 @@ app.post('/api/auth/profiles/:provider', (req, res) => {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     
     if (!auth[provider]) {
-        return res.status(400).json({ error: 'No current auth for provider' });
+        return res.status(400).json({ error: ERROR_CODES.NO_AUTH_FOR_PROVIDER, code: 'NO_AUTH_FOR_PROVIDER' });
     }
 
     const profileName = name || auth[provider].email || `profile-${Date.now()}`;
@@ -2956,7 +3035,7 @@ app.post('/api/auth/profiles/:provider/:name/activate', (req, res) => {
     
     const dir = getProfileDir(provider, activePlugin);
     const profilePath = path.join(dir, `${name}.json`);
-    if (!fs.existsSync(profilePath)) return res.status(404).json({ error: 'Profile not found' });
+    if (!fs.existsSync(profilePath)) return res.status(404).json({ error: ERROR_CODES.PROFILE_NOT_FOUND, code: 'PROFILE_NOT_FOUND' });
     
     const profileData = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
     const studio = loadStudioConfig();
@@ -3221,7 +3300,7 @@ app.post('/api/auth/login', (req, res) => {
         exec(terminalCmd, (err) => {
             if (err) {
                 console.error('Failed to open terminal:', err);
-                return res.status(500).json({ error: 'Failed to open terminal', details: err.message });
+                return res.status(500).json({ error: ERROR_CODES.FAILED_OPEN_TERMINAL, code: 'FAILED_OPEN_TERMINAL', details: err.message });
             }
             res.json({ success: true, message: 'Terminal opened', note: 'Complete login in the terminal window' });
         });
@@ -3231,7 +3310,7 @@ app.post('/api/auth/login', (req, res) => {
         exec(terminalCmd, (err) => {
             if (err) {
                 console.error('Failed to open terminal:', err);
-                return res.status(500).json({ error: 'Failed to open terminal', details: err.message });
+                return res.status(500).json({ error: ERROR_CODES.FAILED_OPEN_TERMINAL, code: 'FAILED_OPEN_TERMINAL', details: err.message });
             }
             res.json({ success: true, message: 'Terminal opened', note: 'Complete login in the terminal window' });
         });
@@ -3801,7 +3880,7 @@ app.post('/api/auth/pool/limit', (req, res) => {
     const { provider, limit } = req.body;
     
     if (!provider || typeof limit !== 'number' || limit < 0) {
-        return res.status(400).json({ error: 'Invalid provider or limit' });
+        return res.status(400).json({ error: ERROR_CODES.INVALID_PROVIDER_OR_LIMIT, code: 'INVALID_PROVIDER_OR_LIMIT' });
     }
 
     const activePlugin = getActiveGooglePlugin();
@@ -3985,7 +4064,7 @@ app.post('/api/profiles', (req, res) => {
     try {
         res.json(profileManager.createProfile(req.body.name));
     } catch (e) {
-        res.status(400).json({ error: e.message });
+        res.status(400).json({ error: e.message, ...(e.code && { code: e.code }) });
     }
 });
 
@@ -3993,7 +4072,7 @@ app.delete('/api/profiles/:name', (req, res) => {
     try {
         res.json(profileManager.deleteProfile(req.params.name));
     } catch (e) {
-        res.status(400).json({ error: e.message });
+        res.status(400).json({ error: e.message, ...(e.code && { code: e.code }) });
     }
 });
 
@@ -4001,7 +4080,7 @@ app.post('/api/profiles/:name/activate', (req, res) => {
     try {
         res.json(profileManager.activateProfile(req.params.name));
     } catch (e) {
-        res.status(400).json({ error: e.message });
+        res.status(400).json({ error: e.message, ...(e.code && { code: e.code }) });
     }
 });
 
@@ -4146,7 +4225,7 @@ app.get('/api/usage', async (req, res) => {
         });
     } catch (error) {
         console.error('Usage API error:', error);
-        res.status(500).json({ error: 'Failed to fetch usage statistics' });
+        res.status(500).json({ error: ERROR_CODES.FAILED_FETCH_USAGE, code: 'FAILED_FETCH_USAGE' });
     }
 });
 
@@ -4245,12 +4324,12 @@ function encodeOAuthState(payload) {
 
 app.post('/api/auth/google/start', async (req, res) => {
     if (oauthCallbackServer) {
-        return res.status(400).json({ error: 'OAuth flow already in progress' });
+        return res.status(400).json({ error: ERROR_CODES.OAUTH_IN_PROGRESS, code: 'OAUTH_IN_PROGRESS' });
     }
 
     const clientId = getGeminiClientId();
     if (!clientId) {
-        return res.status(400).json({ error: 'Missing Gemini OAuth client_id. Set GEMINI_CLIENT_ID or mcp.google.oauth.clientId.' });
+        return res.status(400).json({ error: ERROR_CODES.MISSING_GEMINI_OAUTH_CLIENT, code: 'MISSING_GEMINI_OAUTH_CLIENT' });
     }
 
     const { verifier, challenge } = generatePKCE();
@@ -4464,7 +4543,7 @@ app.delete('/api/pending-action', (req, res) => {
 app.post('/api/plugins/config/add', (req, res) => {
     const { plugins } = req.body;
     const opencode = loadConfig();
-    if (!opencode) return res.status(404).json({ error: 'Config not found' });
+    if (!opencode) return res.status(404).json({ error: ERROR_CODES.CONFIG_NOT_FOUND, code: 'CONFIG_NOT_FOUND' });
     
     if (!opencode.plugin) opencode.plugin = [];
     const added = [];
@@ -4515,7 +4594,7 @@ app.put('/api/presets/:id', (req, res) => {
     const { name, description, config } = req.body;
     const studio = loadStudioConfig();
     const index = (studio.presets || []).findIndex(p => p.id === id);
-    if (index === -1) return res.status(404).json({ error: 'Preset not found' });
+    if (index === -1) return res.status(404).json({ error: ERROR_CODES.PRESET_NOT_FOUND, code: 'PRESET_NOT_FOUND' });
     
     studio.presets[index] = { ...studio.presets[index], name, description, config };
     saveStudioConfig(studio);
@@ -4536,7 +4615,7 @@ app.post('/api/presets/:id/apply', (req, res) => {
     
     const studio = loadStudioConfig();
     const preset = (studio.presets || []).find(p => p.id === id);
-    if (!preset) return res.status(404).json({ error: 'Preset not found' });
+    if (!preset) return res.status(404).json({ error: ERROR_CODES.PRESET_NOT_FOUND, code: 'PRESET_NOT_FOUND' });
     
     const config = loadConfig() || {};
     const cp = getConfigPath();

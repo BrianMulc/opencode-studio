@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import type { PermissionConfig, PermissionValue } from "@/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -53,16 +54,17 @@ interface PermissionEditorProps {
 }
 
 export function PermissionEditor({ value, onChange, className }: PermissionEditorProps) {
+  const t = useTranslations("common");
   const [patternDrafts, setPatternDrafts] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [onlyEnabled, setOnlyEnabled] = useState(false);
 
   const tools = useMemo(() => {
-    return TOOL_LIST.filter((t) => {
-      const matchesSearch = t.toLowerCase().includes(search.toLowerCase());
+    return TOOL_LIST.filter((tool) => {
+      const matchesSearch = tool.toLowerCase().includes(search.toLowerCase());
       if (!matchesSearch) return false;
       if (onlyEnabled) {
-        const current = value[t as keyof PermissionConfig];
+        const current = value[tool as keyof PermissionConfig];
         return !!current && current !== "ask";
       }
       return true;
@@ -81,7 +83,7 @@ export function PermissionEditor({ value, onChange, className }: PermissionEdito
       <div className="flex flex-col gap-4 mb-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           <Input
-            placeholder="Search tools..."
+            placeholder={t("permissions.searchTools")}
             className="h-8 w-[150px] lg:w-[240px]"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -92,11 +94,11 @@ export function PermissionEditor({ value, onChange, className }: PermissionEdito
             className={cn("h-8 gap-2", onlyEnabled && "bg-accent text-accent-foreground")}
             onClick={() => setOnlyEnabled(!onlyEnabled)}
           >
-            Enabled Only
+            {t("permissions.enabledOnly")}
           </Button>
         </div>
         <div className="text-xs text-muted-foreground font-mono">
-          {tools.length} tools found
+          {t("permissions.toolsFound", { count: tools.length })}
         </div>
       </div>
 
@@ -130,9 +132,9 @@ export function PermissionEditor({ value, onChange, className }: PermissionEdito
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="simple">Simple</SelectItem>
-                      <SelectItem value="map">Pattern Map</SelectItem>
-                      <SelectItem value="list">Allow/Deny List</SelectItem>
+                      <SelectItem value="simple">{t("permissions.simple")}</SelectItem>
+                       <SelectItem value="map">{t("permissions.patternMap")}</SelectItem>
+                       <SelectItem value="list">{t("permissions.allowDenyList")}</SelectItem>
                     </SelectContent>
                   </Select>
 
@@ -145,9 +147,9 @@ export function PermissionEditor({ value, onChange, className }: PermissionEdito
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="allow">Allow</SelectItem>
-                        <SelectItem value="ask">Ask</SelectItem>
-                        <SelectItem value="deny">Deny</SelectItem>
+                        <SelectItem value="allow">{t("permissions.allow")}</SelectItem>
+                        <SelectItem value="ask">{t("permissions.ask")}</SelectItem>
+                        <SelectItem value="deny">{t("permissions.deny")}</SelectItem>
                       </SelectContent>
                     </Select>
                   )}
@@ -172,11 +174,11 @@ export function PermissionEditor({ value, onChange, className }: PermissionEdito
                           <SelectTrigger className="w-[100px] h-8 text-xs">
                             <SelectValue />
                           </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="allow">Allow</SelectItem>
-                            <SelectItem value="ask">Ask</SelectItem>
-                            <SelectItem value="deny">Deny</SelectItem>
-                          </SelectContent>
+                           <SelectContent>
+                             <SelectItem value="allow">{t("permissions.allow")}</SelectItem>
+                             <SelectItem value="ask">{t("permissions.ask")}</SelectItem>
+                             <SelectItem value="deny">{t("permissions.deny")}</SelectItem>
+                           </SelectContent>
                         </Select>
                         <Button
                           variant="ghost"
@@ -195,7 +197,7 @@ export function PermissionEditor({ value, onChange, className }: PermissionEdito
                     <div className="flex flex-col gap-2 md:flex-row md:items-center pt-2">
                       <Input
                         className="font-mono h-8 text-xs flex-1"
-                        placeholder='Add pattern, e.g. "git *"'
+                        placeholder={t("permissions.addPatternPlaceholder")}
                         value={draft}
                         onChange={(e) => setPatternDrafts((prev) => ({ ...prev, [tool]: e.target.value }))}
                       />
@@ -210,7 +212,7 @@ export function PermissionEditor({ value, onChange, className }: PermissionEdito
                         }}
                       >
                         <Plus className="h-3 w-3" />
-                        Add
+                        {t("permissions.add")}
                       </Button>
                     </div>
                   </div>
@@ -220,7 +222,7 @@ export function PermissionEditor({ value, onChange, className }: PermissionEdito
                 <div className="mt-4 grid gap-4 md:grid-cols-2 border-t pt-4">
                   <div className="space-y-2">
                     <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
-                      Allow Patterns
+                      {t("permissions.allowPatterns")}
                     </div>
                     <Textarea
                       className="min-h-[80px] text-xs font-mono resize-none"
@@ -231,12 +233,12 @@ export function PermissionEditor({ value, onChange, className }: PermissionEdito
                           allow: fromArrayInput(e.target.value),
                         });
                       }}
-                      placeholder="e.g. src/**/*.ts, lib/*.js"
+                      placeholder={t("permissions.allowPlaceholder")}
                     />
                   </div>
                   <div className="space-y-2">
                     <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
-                      Deny Patterns
+                      {t("permissions.denyPatterns")}
                     </div>
                     <Textarea
                       className="min-h-[80px] text-xs font-mono resize-none border-destructive/20 focus-visible:border-destructive/40"
@@ -247,7 +249,7 @@ export function PermissionEditor({ value, onChange, className }: PermissionEdito
                           deny: fromArrayInput(e.target.value),
                         });
                       }}
-                      placeholder="e.g. secrets/**, *.key"
+                      placeholder={t("permissions.denyPlaceholder")}
                     />
                   </div>
                 </div>

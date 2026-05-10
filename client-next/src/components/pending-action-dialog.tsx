@@ -17,6 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { WarningBox, Server, Gamepad, Code, Loader } from "@nsmr/pixelart-react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 
 interface PendingActionDialogProps {
   action: PendingAction;
@@ -24,17 +25,17 @@ interface PendingActionDialogProps {
   onCancel: () => void;
 }
 
-function InstallMCPContent({ action }: { action: PendingAction }) {
+function InstallMCPContent({ action, t }: { action: PendingAction; t: ReturnType<typeof useTranslations> }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Server className="h-5 w-5 text-primary" />
-        <span className="font-medium">{action.name || "MCP Server"}</span>
+        <span className="font-medium">{action.name || t('pendingAction.mcpServer')}</span>
       </div>
       
       {action.command && (
         <div className="space-y-1">
-          <p className="text-sm text-muted-foreground">Command:</p>
+          <p className="text-sm text-muted-foreground">{t('pendingAction.commandLabel')}</p>
           <pre className="bg-muted p-3 rounded-md text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all">
             {action.command}
           </pre>
@@ -43,13 +44,13 @@ function InstallMCPContent({ action }: { action: PendingAction }) {
       
       {action.env && Object.keys(action.env).length > 0 && (
         <div className="space-y-1">
-          <p className="text-sm text-muted-foreground">Environment Variables:</p>
+          <p className="text-sm text-muted-foreground">{t('pendingAction.envLabel')}</p>
           <div className="bg-muted p-3 rounded-md space-y-1">
             {Object.entries(action.env).map(([key, value]) => (
               <div key={key} className="flex gap-2 text-xs font-mono">
                 <span className="text-primary">{key}</span>
                 <span className="text-muted-foreground">=</span>
-                <span className="text-foreground break-all">{value || "(to be set)"}</span>
+                <span className="text-foreground break-all">{value || t('pendingAction.toBeSet')}</span>
               </div>
             ))}
           </div>
@@ -59,24 +60,24 @@ function InstallMCPContent({ action }: { action: PendingAction }) {
       <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-md">
         <WarningBox className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
         <p className="text-xs text-amber-600 dark:text-amber-400">
-          This will add an MCP server to your OpenCode configuration. Only proceed if you trust the source.
+          {t('pendingAction.mcpWarning')}
         </p>
       </div>
     </div>
   );
 }
 
-function ImportSkillContent({ action }: { action: PendingAction }) {
+function ImportSkillContent({ action, t }: { action: PendingAction; t: ReturnType<typeof useTranslations> }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Gamepad className="h-5 w-5 text-primary" />
-        <span className="font-medium">{action.name || "Skill"}</span>
+        <span className="font-medium">{action.name || t('pendingAction.skill')}</span>
       </div>
       
       {action.url && (
         <div className="space-y-1">
-          <p className="text-sm text-muted-foreground">Source URL:</p>
+          <p className="text-sm text-muted-foreground">{t('pendingAction.sourceUrlLabel')}</p>
           <pre className="bg-muted p-3 rounded-md text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all">
             {action.url}
           </pre>
@@ -84,23 +85,23 @@ function ImportSkillContent({ action }: { action: PendingAction }) {
       )}
       
       <p className="text-sm text-muted-foreground">
-        This will fetch and import a skill from the URL above.
+        {t('pendingAction.skillDescription')}
       </p>
     </div>
   );
 }
 
-function ImportPluginContent({ action }: { action: PendingAction }) {
+function ImportPluginContent({ action, t }: { action: PendingAction; t: ReturnType<typeof useTranslations> }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Code className="h-5 w-5 text-primary" />
-        <span className="font-medium">{action.name || "Plugin"}</span>
+        <span className="font-medium">{action.name || t('pendingAction.plugin')}</span>
       </div>
       
       {action.url && (
         <div className="space-y-1">
-          <p className="text-sm text-muted-foreground">Source URL:</p>
+          <p className="text-sm text-muted-foreground">{t('pendingAction.sourceUrlLabel')}</p>
           <pre className="bg-muted p-3 rounded-md text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all">
             {action.url}
           </pre>
@@ -110,7 +111,7 @@ function ImportPluginContent({ action }: { action: PendingAction }) {
       <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-md">
         <WarningBox className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
         <p className="text-xs text-amber-600 dark:text-amber-400">
-          Plugins can execute code. Only import from trusted sources.
+          {t('pendingAction.pluginWarning')}
         </p>
       </div>
     </div>
@@ -118,18 +119,19 @@ function ImportPluginContent({ action }: { action: PendingAction }) {
 }
 
 function PendingActionDialogInner({ action, onConfirm, onCancel }: PendingActionDialogProps) {
+  const t = useTranslations('dialogs');
   const [loading, setLoading] = useState(false);
 
   const titles: Record<PendingAction["type"], string> = {
-    "install-mcp": "Install MCP Server?",
-    "import-skill": "Import Skill?",
-    "import-plugin": "Import Plugin?",
+    "install-mcp": t('pendingAction.installMcpTitle'),
+    "import-skill": t('pendingAction.importSkillTitle'),
+    "import-plugin": t('pendingAction.importPluginTitle'),
   };
 
   const descriptions: Record<PendingAction["type"], string> = {
-    "install-mcp": "An external link is requesting to add an MCP server.",
-    "import-skill": "An external link is requesting to import a skill.",
-    "import-plugin": "An external link is requesting to import a plugin.",
+    "install-mcp": t('pendingAction.installMcpDescription'),
+    "import-skill": t('pendingAction.importSkillDescription'),
+    "import-plugin": t('pendingAction.importPluginDescription'),
   };
 
   const handleConfirm = async () => {
@@ -146,7 +148,7 @@ function PendingActionDialogInner({ action, onConfirm, onCancel }: PendingAction
       <AlertDialogContent className="max-w-lg">
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
-            <Badge variant="outline" className="text-xs">External Request</Badge>
+            <Badge variant="outline" className="text-xs">{t('pendingAction.externalRequest')}</Badge>
             {titles[action.type]}
           </AlertDialogTitle>
           <AlertDialogDescription>
@@ -155,23 +157,23 @@ function PendingActionDialogInner({ action, onConfirm, onCancel }: PendingAction
         </AlertDialogHeader>
         
         <div className="py-2">
-          {action.type === "install-mcp" && <InstallMCPContent action={action} />}
-          {action.type === "import-skill" && <ImportSkillContent action={action} />}
-          {action.type === "import-plugin" && <ImportPluginContent action={action} />}
+          {action.type === "install-mcp" && <InstallMCPContent action={action} t={t} />}
+          {action.type === "import-skill" && <ImportSkillContent action={action} t={t} />}
+          {action.type === "import-plugin" && <ImportPluginContent action={action} t={t} />}
         </div>
         
         <AlertDialogFooter>
           <AlertDialogCancel onClick={onCancel} disabled={loading}>
-            Cancel
+            {t('cancel')}
           </AlertDialogCancel>
           <AlertDialogAction onClick={handleConfirm} disabled={loading}>
             {loading ? (
               <>
                 <Loader className="h-4 w-4 mr-2 animate-spin" />
-                Processing...
+                {t('pendingAction.processing')}
               </>
             ) : (
-              action.type === "install-mcp" ? "Install" : "Import"
+              action.type === "install-mcp" ? t('pendingAction.install') : t('pendingAction.import')
             )}
           </AlertDialogAction>
         </AlertDialogFooter>
@@ -181,6 +183,7 @@ function PendingActionDialogInner({ action, onConfirm, onCancel }: PendingAction
 }
 
 export function PendingActionDialog() {
+  const t = useTranslations('dialogs');
   const router = useRouter();
   const { pendingAction, dismissPendingAction, addMCP, refreshData } = useApp();
 
@@ -201,7 +204,7 @@ export function PendingActionDialog() {
             };
             const name = pendingAction.name || `mcp-${Date.now()}`;
             await addMCP(name, mcpConfig);
-            toast.success(`Added MCP server: ${name}`);
+            toast.success(t('pendingAction.addedMcpToast', { name }));
             router.push("/mcp");
           }
           break;
@@ -234,7 +237,7 @@ export function PendingActionDialog() {
             
             await saveSkill(skillName, description, body);
             await refreshData();
-            toast.success(`Imported skill: ${skillName}`);
+            toast.success(t('pendingAction.importedSkillToast', { name: skillName }));
             router.push("/skills");
           }
           break;
@@ -248,14 +251,14 @@ export function PendingActionDialog() {
             const { savePlugin } = await import("@/lib/api");
             await savePlugin(pluginName, result.content);
             await refreshData();
-            toast.success(`Imported plugin: ${pluginName}`);
+            toast.success(t('pendingAction.importedPluginToast', { name: pluginName }));
             router.push("/plugins");
           }
           break;
         }
       }
     } catch (err) {
-      toast.error(`Failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+      toast.error(t('pendingAction.failedToast', { message: err instanceof Error ? err.message : "Unknown error" }));
     } finally {
       await dismissPendingAction();
     }
@@ -263,7 +266,7 @@ export function PendingActionDialog() {
 
   const handleCancel = async () => {
     await dismissPendingAction();
-    toast.info("Action cancelled");
+    toast.info(t('pendingAction.actionCancelled'));
   };
 
   return (

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { InfoBox } from "@nsmr/pixelart-react";
 import {
   Tooltip,
@@ -21,6 +22,8 @@ export interface PageHelpDialogProps {
 }
 
 export function PageHelp({ title, docUrl, docTitle }: PageHelpProps) {
+  const t = useTranslations("common");
+
   return (
     <div className="inline-flex items-center gap-2">
       <h1 className="text-2xl font-bold">{title}</h1>
@@ -40,7 +43,7 @@ export function PageHelp({ title, docUrl, docTitle }: PageHelpProps) {
           <TooltipContent>
             <div className="space-y-2">
               <p className="text-sm font-medium">{docTitle}</p>
-              <p className="text-xs text-muted-foreground">Open documentation</p>
+              <p className="text-xs text-muted-foreground">{t("pageHelp.openDocumentation")}</p>
             </div>
           </TooltipContent>
         </Tooltip>

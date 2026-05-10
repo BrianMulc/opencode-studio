@@ -7,6 +7,8 @@ import { AppProvider } from "@/lib/context";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { PendingActionDialog } from "@/components/pending-action-dialog";
+import { getTranslations, getMessages } from "next-intl/server";
+import { NextIntlClientProvider } from "next-intl";
 
 const rethinkSans = Rethink_Sans({
   variable: "--font-rethink-sans",
@@ -101,11 +103,13 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const t = await getTranslations('common');
+  const messages = await getMessages();
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "WebApplication",
@@ -139,26 +143,28 @@ export default function RootLayout({
         className={`${rethinkSans.variable} ${geist.variable} ${commitMono.variable} antialiased`}
         suppressHydrationWarning
       >
-        <a
-          href="#main-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-background focus:border focus:border-border focus:rounded"
-        >
-          Skip to main content
-        </a>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="dark"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <AppProvider>
-            <AppShell>
-              {children}
-            </AppShell>
-            <PendingActionDialog />
-            <Toaster />
-          </AppProvider>
-        </ThemeProvider>
+        <NextIntlClientProvider messages={messages}>
+          <a
+            href="#main-content"
+            className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-background focus:border focus:border-border focus:rounded"
+          >
+            {t('skipToContent')}
+          </a>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="dark"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <AppProvider>
+              <AppShell>
+                {children}
+              </AppShell>
+              <PendingActionDialog />
+              <Toaster />
+            </AppProvider>
+          </ThemeProvider>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

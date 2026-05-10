@@ -1,11 +1,22 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Login, Logout, CheckDouble, User, ChevronRight, Reload } from "@nsmr/pixelart-react"
 import { getAuthInfo, getAuthProviders, authLogin, authLogout, getAuthProfiles, saveAuthProfile, activateAuthProfile, deleteAuthProfile } from "@/lib/api";
@@ -18,6 +29,11 @@ export default function AuthPage() {
   const [authInfo, setAuthInfo] = useState<AuthInfo | null>(null);
   const [profiles, setProfiles] = useState<AuthProfilesInfo>({});
   const [loginLoading, setLoginLoading] = useState<Record<string, boolean>>({});
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
+  const [logoutProvider, setLogoutProvider] = useState("");
+  const [deleteProfileDialogOpen, setDeleteProfileDialogOpen] = useState(false);
+  const [deleteProfileTarget, setDeleteProfileTarget] = useState<{ provider: string; name: string } | null>(null);
+  const t = useTranslations('auth');
 
   const loadAuthData = async () => {
     try {
@@ -32,7 +48,7 @@ export default function AuthPage() {
       setProfiles(profilesData);
     } catch (e) {
       console.error("Failed to load auth data", e);
-      toast.error("Failed to load auth information");
+      toast.error(t('failedToLoad'));
     } finally {
       setLoading(false);
     }
@@ -47,63 +63,74 @@ export default function AuthPage() {
     try {
       const result = await authLogin(provider);
       if (result.success) {
-        toast.success(result.message || "Login terminal opened");
+        toast.success(result.message || t('loginTerminalOpened'));
         await loadAuthData();
       } else {
-        toast.error(result.message || "Login failed");
+        toast.error(result.message || t('loginFailed'));
       }
     } catch (e) {
       console.error("Login failed", e);
-      toast.error("Failed to start login process");
+      toast.error(t('failedToStartLogin'));
     } finally {
       setLoginLoading(prev => ({ ...prev, [provider]: false }));
     }
   };
 
   const handleLogout = async (provider: string) => {
-    if (!confirm(`Logout from ${provider}?`)) return;
+    setLogoutProvider(provider);
+    setLogoutDialogOpen(true);
+  };
+
+  const confirmLogout = async () => {
     try {
-      await authLogout(provider);
-      toast.success(`Logged out from ${provider}`);
+      await authLogout(logoutProvider);
+      toast.success(t('loggedOut', { provider: logoutProvider }));
       await loadAuthData();
     } catch (e) {
       console.error("Logout failed", e);
-      toast.error("Failed to logout");
+      toast.error(t('failedToLogout'));
     }
+    setLogoutDialogOpen(false);
   };
 
   const handleSaveProfile = async (provider: string) => {
     try {
       const result = await saveAuthProfile(provider);
-      toast.success(`Saved profile: ${result.name}`);
+      toast.success(t('savedProfile', { name: result.name }));
       await loadAuthData();
     } catch (e) {
       console.error("Save profile failed", e);
-      toast.error("Failed to save profile");
+      toast.error(t('failedToSaveProfile'));
     }
   };
 
   const handleActivateProfile = async (provider: string, name: string) => {
     try {
       await activateAuthProfile(provider, name);
-      toast.success(`Activated profile: ${name}`);
+      toast.success(t('activatedProfile', { name }));
       await loadAuthData();
     } catch (e) {
       console.error("Activate profile failed", e);
-      toast.error("Failed to activate profile");
+      toast.error(t('failedToActivateProfile'));
     }
   };
 
   const handleDeleteProfile = async (provider: string, name: string) => {
-    if (!confirm(`Delete profile "${name}"?`)) return;
+    setDeleteProfileTarget({ provider, name });
+    setDeleteProfileDialogOpen(true);
+  };
+
+  const confirmDeleteProfile = async () => {
+    if (!deleteProfileTarget) return;
     try {
-      await deleteAuthProfile(provider, name);
-      toast.success(`Deleted profile: ${name}`);
+      await deleteAuthProfile(deleteProfileTarget.provider, deleteProfileTarget.name);
+      toast.success(t('deletedProfile', { name: deleteProfileTarget.name }));
       await loadAuthData();
     } catch (e) {
       console.error("Delete profile failed", e);
-      toast.error("Failed to delete profile");
+      toast.error(t('failedToDeleteProfile'));
     }
+    setDeleteProfileDialogOpen(false);
   };
 
   if (loading) {
@@ -121,17 +148,17 @@ export default function AuthPage() {
       <header className="flex justify-between items-start border-b pb-4">
         <div>
           <PageHelp
-            title="Authentication"
+            title={t('pageTitle')}
             docUrl="https://opencode.ai/docs/auth"
-            docTitle="Authentication Documentation"
+            docTitle={t('pageDocTitle')}
           />
           <p className="text-muted-foreground mt-1">
-            Manage your API credentials and switch between accounts.
+            {t('pageDescription')}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={loadAuthData}>
           <Reload className="h-4 w-4 mr-2" />
-          Refresh
+          {t('refresh')}
         </Button>
       </header>
 
@@ -150,10 +177,10 @@ export default function AuthPage() {
                       {provider.name}
                       {isLoggedIn && <CheckDouble className="h-4 w-4 text-green-500" />}
                     </CardTitle>
-                    <CardDescription>{provider.type === 'oauth' ? 'OAuth Login' : 'API Key'}</CardDescription>
+                    <CardDescription>{provider.type === 'oauth' ? t('oauthLogin') : t('apiKey')}</CardDescription>
                   </div>
                   <Badge variant={isLoggedIn ? "default" : "secondary"}>
-                    {isLoggedIn ? "Logged In" : "Not Logged In"}
+                    {isLoggedIn ? t('loggedIn') : t('notLoggedIn')}
                   </Badge>
                 </div>
               </CardHeader>
@@ -168,7 +195,7 @@ export default function AuthPage() {
                         onClick={() => handleSaveProfile(provider.id)}
                       >
                         <User className="h-4 w-4 mr-2" />
-                        Save Profile
+                        {t('saveProfile')}
                       </Button>
                       <Button
                         variant="destructive"
@@ -177,7 +204,7 @@ export default function AuthPage() {
                         onClick={() => handleLogout(provider.id)}
                       >
                         <Logout className="h-4 w-4 mr-2" />
-                        Logout
+                        {t('logout')}
                       </Button>
                     </>
                   ) : (
@@ -187,11 +214,11 @@ export default function AuthPage() {
                       disabled={loginLoading[provider.id]}
                     >
                       {loginLoading[provider.id] ? (
-                        <>Loading...</>
+                        <>{t('loading')}</>
                       ) : (
                         <>
                           <Login className="h-4 w-4 mr-2" />
-                          Login
+                          {t('login')}
                         </>
                       )}
                     </Button>
@@ -201,7 +228,7 @@ export default function AuthPage() {
                   {providerProfiles && providerProfiles.profiles && providerProfiles.profiles.length > 0 && (
                     <div className="space-y-2">
                       <div className="text-sm font-medium text-muted-foreground">
-                        Saved Profiles ({providerProfiles.profiles.length})
+                        {t('savedProfiles', { count: providerProfiles.profiles.length })}
                       </div>
                       <div className="space-y-2">
                         {providerProfiles.profiles.map((profile: string) => (
@@ -217,7 +244,7 @@ export default function AuthPage() {
                               <User className="h-4 w-4 text-muted-foreground shrink-0" />
                               <span className="truncate text-sm">{profile}</span>
                               {providerProfiles.active === profile && (
-                                <Badge variant="default" className="text-[10px]">Active</Badge>
+                                <Badge variant="default" className="text-[10px]">{t('active')}</Badge>
                               )}
                             </div>
                             <div className="flex gap-1 shrink-0">
@@ -227,7 +254,7 @@ export default function AuthPage() {
                                   variant="ghost"
                                   className="h-7 w-7"
                                   onClick={() => handleActivateProfile(provider.id, profile)}
-                                  title="Switch to this profile"
+                                  title={t('switchToProfile')}
                                 >
                                   <ChevronRight className="h-3 w-3" />
                                 </Button>
@@ -237,7 +264,7 @@ export default function AuthPage() {
                                 variant="ghost"
                                 className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
                                 onClick={() => handleDeleteProfile(provider.id, profile)}
-                                title="Delete profile"
+                                title={t('deleteProfileTitle')}
                               >
                                 <Logout className="h-3 w-3" />
                               </Button>
@@ -251,7 +278,7 @@ export default function AuthPage() {
                   {(!providerProfiles?.profiles || providerProfiles.profiles.length === 0) && !isLoggedIn && (
                     <Alert>
                       <AlertDescription className="text-sm">
-                        No saved profiles. Login to save your credentials for easy switching.
+                        {t('noSavedProfiles')}
                       </AlertDescription>
                     </Alert>
                   )}
@@ -260,6 +287,36 @@ export default function AuthPage() {
           );
         })}
       </div>
+
+      <AlertDialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('logoutTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('logoutConfirm', { provider: logoutProvider })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('logout')}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmLogout}>{t('logout')}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={deleteProfileDialogOpen} onOpenChange={setDeleteProfileDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('deleteProfileTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('deleteProfileConfirm', { name: deleteProfileTarget?.name || '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('logout')}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteProfile}>{t('deleteProfileTitle')}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

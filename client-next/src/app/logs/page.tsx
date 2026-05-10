@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -17,6 +18,7 @@ interface LogEntry {
 type LogFilter = "all" | "mcp" | "agent" | "error";
 
 export default function LogsPage() {
+  const t = useTranslations('logs');
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [paused, setPaused] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -44,10 +46,10 @@ export default function LogsPage() {
         };
 
         source.onerror = () => {
-          toast.error("Log stream disconnected");
+          toast.error(t('disconnected'));
         };
       } catch (err: any) {
-        toast.error(err?.message || "Failed to connect to logs");
+        toast.error(err?.message || t('connectFailed'));
       }
     };
 
@@ -77,30 +79,30 @@ export default function LogsPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <PageHelp title="Logs" docUrl="https://opencode.ai/docs" docTitle="Live Log Viewer & Debugger" />
+        <PageHelp title={t('title')} docUrl="https://opencode.ai/docs" docTitle={t('docTitle')} />
         <div className="flex flex-wrap items-center gap-2">
           <Select value={filter} onValueChange={(v) => setFilter(v as LogFilter)}>
             <SelectTrigger className="w-[140px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="mcp">MCP</SelectItem>
-              <SelectItem value="agent">Agent</SelectItem>
-              <SelectItem value="error">Errors</SelectItem>
+              <SelectItem value="all">{t('filterAll')}</SelectItem>
+              <SelectItem value="mcp">{t('filterMcp')}</SelectItem>
+              <SelectItem value="agent">{t('filterAgent')}</SelectItem>
+              <SelectItem value="error">{t('filterError')}</SelectItem>
             </SelectContent>
           </Select>
           <Button variant="outline" onClick={() => setPaused((prev) => !prev)}>
             {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
-            {paused ? "Resume" : "Pause"}
+            {paused ? t('resume') : t('pause')}
           </Button>
           <Button variant="outline" onClick={() => setAutoScroll((prev) => !prev)}>
             <ArrowDown className="h-4 w-4" />
-            {autoScroll ? "Auto" : "Manual"}
+            {autoScroll ? t('auto') : t('manual')}
           </Button>
           <Button variant="outline" onClick={() => setLogs([])}>
             <Trash className="h-4 w-4" />
-            Clear
+            {t('clear')}
           </Button>
         </div>
       </div>
@@ -110,7 +112,7 @@ export default function LogsPage() {
         className="h-[70vh] overflow-y-auto rounded-md border border-border bg-background px-4 py-3 font-mono text-xs"
       >
         {filtered.length === 0 ? (
-          <div className="text-muted-foreground">No log entries yet.</div>
+          <div className="text-muted-foreground">{t('noEntries')}</div>
         ) : (
           filtered.map((entry, idx) => (
             <div

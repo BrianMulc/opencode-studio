@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { useApp } from "@/lib/context";
 import { getMcpServers } from "@/lib/api";
 import { MCPCard } from "@/components/mcp-card";
@@ -21,9 +22,12 @@ import { toast } from "sonner";
 import { Search } from "@nsmr/pixelart-react";
 import { PageHelp } from "@/components/page-help";
 import { PresetsManager } from "@/components/presets-manager";
+import { useErrorTranslation } from "@/lib/error-translate";
 import type { MCPConfig } from "@/types";
 
 export default function MCPPage() {
+  const t = useTranslations('mcp');
+  const translateError = useErrorTranslation();
   const { toggleMCP, deleteMCP, addMCP, updateMCP } = useApp();
   const [mcpData, setMcpData] = useState<Record<string, MCPConfig>>({});
   const [loading, setLoading] = useState(true);
@@ -38,7 +42,7 @@ export default function MCPPage() {
       const data = await getMcpServers();
       setMcpData(data);
     } catch (err: any) {
-      toast.error("Failed to load MCP servers");
+      toast.error(t('loadFailed'));
       console.error(err);
     } finally {
       setLoading(false);
@@ -62,11 +66,11 @@ export default function MCPPage() {
   const handleToggle = async (key: string) => {
     try {
       await toggleMCP(key);
-      toast.success(`${key} ${mcpData[key]?.enabled ? "disabled" : "enabled"}`);
+      toast.success(mcpData[key]?.enabled ? t('toggleDisabled', { name: key }) : t('toggleEnabled', { name: key }));
       await fetchMcpServers();
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || "Unknown error";
-      toast.error(`Failed to toggle server: ${msg}`);
+      const msg = err.response?.data?.error || err.message || t('unknownError');
+      toast.error(t('toggleFailed', { error: msg }));
     }
   };
 
@@ -74,11 +78,11 @@ export default function MCPPage() {
     if (!deleteTarget) return;
     try {
       await deleteMCP(deleteTarget);
-      toast.success(`${deleteTarget} deleted`);
+      toast.success(t('deleted', { name: deleteTarget }));
       await fetchMcpServers();
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || "Unknown error";
-      toast.error(`Failed to delete server: ${msg}`);
+      const msg = err.response?.data?.error || err.message || t('unknownError');
+      toast.error(t('deleteFailed', { error: msg }));
     } finally {
       setDeleteTarget(null);
     }
@@ -87,11 +91,11 @@ export default function MCPPage() {
   const handleAdd = async (name: string, mcpConfig: Parameters<typeof addMCP>[1]) => {
     try {
       await addMCP(name, mcpConfig);
-      toast.success(`${name} added`);
+      toast.success(t('added', { name }));
       await fetchMcpServers();
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || "Unknown error";
-      toast.error(`Failed to add server: ${msg}`);
+      const msg = err.response?.data?.error || err.message || t('unknownError');
+      toast.error(t('addFailed', { error: msg }));
     }
   };
 
@@ -100,18 +104,18 @@ export default function MCPPage() {
     if (!mcpConfig) return;
     try {
       await updateMCP(key, mcpConfig);
-      toast.success(`${key} updated`);
+      toast.success(t('updated', { name: key }));
       await fetchMcpServers();
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || "Unknown error";
-      toast.error(`Failed to update server: ${msg}`);
+      const msg = err.response?.data?.error || err.message || t('unknownError');
+      toast.error(t('updateFailed', { error: msg }));
     }
   };
 
   if (loading) {
     return (
       <div className="space-y-4">
-        <PageHelp title="MCP Servers" docUrl="https://opencode.ai/docs" docTitle="MCP Servers" />
+        <PageHelp title={t('title')} docUrl="https://opencode.ai/docs" docTitle={t('docTitle')} />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-32" />
@@ -124,7 +128,7 @@ export default function MCPPage() {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <PageHelp title="MCP Servers" docUrl="https://opencode.ai/docs" docTitle="MCP Servers" />
+        <PageHelp title={t('title')} docUrl="https://opencode.ai/docs" docTitle={t('docTitle')} />
         <div className="flex gap-2">
           <PresetsManager />
           <AddMCPDialog onAdd={handleAdd} />
@@ -137,7 +141,7 @@ export default function MCPPage() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search MCP servers..."
+            placeholder={t('searchPlaceholder')}
             className="pl-9"
           />
         </div>
@@ -157,21 +161,21 @@ export default function MCPPage() {
       </div>
 
       {search && filteredMCPs.length === 0 && (
-        <p className="text-muted-foreground italic">No MCP servers match &quot;{search}&quot;</p>
+        <p className="text-muted-foreground italic">{t('noMatch', { search })}</p>
       )}
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {deleteTarget}?</AlertDialogTitle>
+            <AlertDialogTitle>{t('deleteConfirmTitle', { name: deleteTarget ?? '' })}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove the MCP server configuration. This action cannot be undone.
+              {t('deleteConfirmDescription')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
+              {t('delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,59 +1,37 @@
 # Dependencies
 node_modules/
-.pnp
-.pnp.js
 
-# Build outputs
-dist/
-build/
+# Build output
 .next/
 out/
+dist/
 
-# Worktrees
-.worktrees/
-
-# Cache
-.cache/
-*.tsbuildinfo
-.planenode_modules/
-.planning/
-.sisyphus/
-.opencode/
-**/.gemini/
-opencode.json
+# Logs
+*.log
+npm-debug.log*
 
 # Environment
 .env
 .env.local
 .env.*.local
 
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
 # OS
 .DS_Store
 Thumbs.db
 
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
+# Cache
+.cache/
+*.tsbuildinfo
 
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# Sisyphus working files
+.sisyphus/
 
-# Build outputs
-*.out
-a.out
-
-# Testing
-coverage/
-
-# Misc
-*.pem
-.vercel
-
-.vercel
-.env*.local
-nul
+# Changeset (version management - optional)
+.changeset/
