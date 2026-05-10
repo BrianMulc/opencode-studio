@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { useApp } from "@/lib/context";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -20,6 +21,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -28,6 +39,7 @@ import { getPresets, savePreset, deletePreset, applyPreset } from "@/lib/api";
 import type { Preset } from "@/types";
 
 export function PresetsManager() {
+  const t = useTranslations("common");
   const { config, skills, plugins, refreshData } = useApp();
   const [presets, setPresets] = useState<Preset[]>([]);
   const [open, setOpen] = useState(false);
@@ -42,6 +54,8 @@ export function PresetsManager() {
   const [includeSkills, setIncludeSkills] = useState(true);
   const [includePlugins, setIncludePlugins] = useState(true);
   const [includeMcps, setIncludeMcps] = useState(true);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string, name: string } | null>(null);
 
   useEffect(() => {
     if (createOpen) {
@@ -61,7 +75,7 @@ export function PresetsManager() {
       const data = await getPresets();
       setPresets(data);
     } catch {
-      toast.error("Failed to load presets");
+      toast.error(t("presets.failedToLoad"));
     }
   };
 
@@ -70,7 +84,7 @@ export function PresetsManager() {
   }, [open]);
 
   const handleCreate = async () => {
-    if (!newName.trim()) return toast.error("Name is required");
+    if (!newName.trim()) return toast.error(t("presets.nameRequired"));
     
     try {
       await savePreset(newName, newDesc, {
@@ -79,36 +93,42 @@ export function PresetsManager() {
         mcps: includeMcps ? selectedMcps : undefined,
         commands: []
       });
-      toast.success("Preset created");
+      toast.success(t("presets.presetCreated"));
       setCreateOpen(false);
       setNewName("");
       setNewDesc("");
       loadPresets();
     } catch (err: any) {
       const msg = err?.response?.data?.error || err?.message || "Unknown error";
-      toast.error(`Failed to create preset: ${msg}`);
+      toast.error(t("presets.failedToCreate", { msg }));
     }
   };
 
   const handleApply = async (id: string, mode: 'exclusive' | 'additive') => {
     try {
       await applyPreset(id, mode);
-      toast.success(`Preset applied (${mode})`);
+      toast.success(t("presets.presetApplied", { mode }));
       refreshData();
       setOpen(false); // Close dialog on success
     } catch {
-      toast.error("Failed to apply preset");
+      toast.error(t("presets.failedToApply"));
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete this preset?")) return;
+  const handleDelete = (id: string, name: string) => {
+    setDeleteTarget({ id, name });
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
     try {
-      await deletePreset(id);
-      toast.success("Preset deleted");
+      await deletePreset(deleteTarget.id);
+      toast.success(t("presets.presetDeleted"));
+      setDeleteDialogOpen(false);
       loadPresets();
     } catch {
-      toast.error("Failed to delete preset");
+      toast.error(t("presets.failedToDelete"));
     }
   };
 
@@ -118,14 +138,14 @@ export function PresetsManager() {
         <DialogTrigger asChild>
           <Button variant="outline" size="sm">
             <CardStack className="h-4 w-4 mr-2" />
-            Presets
+            {t("presets.presetsBtn")}
           </Button>
         </DialogTrigger>
         <DialogContent className="max-w-4xl max-h-[65vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Presets Manager</DialogTitle>
+            <DialogTitle>{t("presets.managerTitle")}</DialogTitle>
             <DialogDescription>
-              Save the current configuration as a preset, or apply existing ones.
+              {t("presets.managerDescription")}
             </DialogDescription>
           </DialogHeader>
           
@@ -133,9 +153,9 @@ export function PresetsManager() {
             {presets.length === 0 ? (
               <div className="text-center py-12 border border-dashed rounded-lg">
                 <CardStack className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
-                <h3 className="text-lg font-medium text-muted-foreground">No presets yet</h3>
+                <h3 className="text-lg font-medium text-muted-foreground">{t("presets.noPresetsYet")}</h3>
                 <p className="text-sm text-muted-foreground/70 mt-1 max-w-sm mx-auto">
-                  Configure your environment (enable skills, plugins, etc.) then click "New Preset" below.
+                  {t("presets.noPresetsHint")}
                 </p>
               </div>
             ) : (
@@ -158,19 +178,19 @@ export function PresetsManager() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleDelete(preset.id)} className="text-destructive">
-                              <Trash className="h-4 w-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDelete(preset.id, preset.name)} className="text-destructive">
+                               <Trash className="h-4 w-4 mr-2" />
+                              {t("presets.delete")}
+                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
                     </CardHeader>
                     <CardContent>
                       <div className="text-xs text-muted-foreground mb-4 space-y-1 bg-muted/30 p-2 rounded">
-                        <p>• {(preset.config.skills || []).length} skills</p>
-                        <p>• {(preset.config.plugins || []).length} plugins</p>
-                        <p>• {(preset.config.mcps || []).length} MCPs</p>
+                        <p>• {t("presets.skillsCount", { count: (preset.config.skills || []).length })}</p>
+                        <p>• {t("presets.pluginsCount", { count: (preset.config.plugins || []).length })}</p>
+                        <p>• {t("presets.mcpsCount", { count: (preset.config.mcps || []).length })}</p>
                       </div>
                       <div className="flex gap-2">
                         <Button 
@@ -178,20 +198,20 @@ export function PresetsManager() {
                           size="sm" 
                           className="flex-1 text-xs"
                           onClick={() => handleApply(preset.id, 'exclusive')}
-                          title="Enables these items and DISABLES all others"
+                          title={t("presets.exclusiveTitle")}
                         >
                           <Play className="h-3 w-3 mr-1.5" />
-                          Exclusive
+                          {t("presets.exclusive")}
                         </Button>
-                        <Button 
-                          variant="secondary" 
-                          size="sm" 
+                        <Button
+                          variant="secondary"
+                          size="sm"
                           className="flex-1 text-xs"
                           onClick={() => handleApply(preset.id, 'additive')}
-                          title="Enables these items (keeps others active)"
+                          title={t("presets.additiveTitle")}
                         >
                           <Plus className="h-3 w-3 mr-1.5" />
-                          Add
+                          {t("presets.additive")}
                         </Button>
                       </div>
                     </CardContent>
@@ -204,7 +224,7 @@ export function PresetsManager() {
           <DialogFooter className="border-t pt-4">
              <Button onClick={() => setCreateOpen(true)}>
                <Plus className="h-4 w-4 mr-2" />
-               New Preset
+               {t("presets.newPreset")}
              </Button>
           </DialogFooter>
         </DialogContent>
@@ -213,25 +233,25 @@ export function PresetsManager() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-[95vw] sm:max-w-[95vw] w-[1400px] h-[90vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Create Preset</DialogTitle>
+            <DialogTitle>{t("presets.createPreset")}</DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto py-4">
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Name</Label>
-                  <Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Coding Mode" />
+                  <Label>{t("presets.name")}</Label>
+                  <Input value={newName} onChange={e => setNewName(e.target.value)} placeholder={t("presets.namePlaceholder")} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Description</Label>
-                  <Input value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Enables coding skills..." />
+                  <Label>{t("presets.description")}</Label>
+                  <Input value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder={t("presets.descPlaceholder")} />
                 </div>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 h-full min-h-[400px]">
                 <div className="border rounded-md flex flex-col h-full overflow-hidden">
                   <div className="flex items-center justify-between p-3 border-b bg-muted/30">
-                    <Label htmlFor="include-skills" className="cursor-pointer font-medium text-sm">Skills</Label>
+                    <Label htmlFor="include-skills" className="cursor-pointer font-medium text-sm">{t("presets.skills")}</Label>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">{selectedSkills.length}/{skills.length}</span>
                       <Button
@@ -243,12 +263,12 @@ export function PresetsManager() {
                           else setSelectedSkills(skills.map(s => s.name));
                         }}
                       >
-                        {selectedSkills.length === skills.length ? "None" : "All"}
+                        {selectedSkills.length === skills.length ? t("presets.none") : t("presets.all")}
                       </Button>
                     </div>
                   </div>
                   <div className="flex-1 overflow-y-auto max-h-[65vh] p-2 space-y-1">
-                    {skills.length === 0 && <p className="text-xs text-muted-foreground italic p-2">No skills found</p>}
+                    {skills.length === 0 && <p className="text-xs text-muted-foreground italic p-2">{t("presets.noSkillsFound")}</p>}
                     {skills.map(skill => (
                       <div key={skill.name} className="flex items-start justify-between gap-3 p-2 rounded hover:bg-muted/50 text-sm">
                         <label htmlFor={`skill-${skill.name}`} className="flex-1 min-w-0 cursor-pointer whitespace-normal break-words leading-tight" title={skill.name}>{skill.name}</label>
@@ -268,7 +288,7 @@ export function PresetsManager() {
 
                 <div className="border rounded-md flex flex-col h-full overflow-hidden">
                   <div className="flex items-center justify-between p-3 border-b bg-muted/30">
-                    <Label htmlFor="include-plugins" className="cursor-pointer font-medium text-sm">Plugins</Label>
+                    <Label htmlFor="include-plugins" className="cursor-pointer font-medium text-sm">{t("presets.plugins")}</Label>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">{selectedPlugins.length}/{plugins.length}</span>
                       <Button
@@ -280,12 +300,12 @@ export function PresetsManager() {
                           else setSelectedPlugins(plugins.map(p => p.name));
                         }}
                       >
-                        {selectedPlugins.length === plugins.length ? "None" : "All"}
+                        {selectedPlugins.length === plugins.length ? t("presets.none") : t("presets.all")}
                       </Button>
                     </div>
                   </div>
                   <div className="flex-1 overflow-y-auto max-h-[65vh] p-2 space-y-1">
-                    {plugins.length === 0 && <p className="text-xs text-muted-foreground italic p-2">No plugins found</p>}
+                    {plugins.length === 0 && <p className="text-xs text-muted-foreground italic p-2">{t("presets.noPluginsFound")}</p>}
                     {plugins.map(plugin => (
                       <div key={plugin.name} className="flex items-start justify-between gap-3 p-2 rounded hover:bg-muted/50 text-sm">
                         <label htmlFor={`plugin-${plugin.name}`} className="flex-1 min-w-0 cursor-pointer whitespace-normal break-words leading-tight" title={plugin.name}>{plugin.name}</label>
@@ -305,7 +325,7 @@ export function PresetsManager() {
 
                 <div className="border rounded-md flex flex-col h-full overflow-hidden">
                   <div className="flex items-center justify-between p-3 border-b bg-muted/30">
-                    <Label htmlFor="include-mcps" className="cursor-pointer font-medium text-sm">MCPs</Label>
+                    <Label htmlFor="include-mcps" className="cursor-pointer font-medium text-sm">{t("presets.mcps")}</Label>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">{selectedMcps.length}/{config?.mcp ? Object.keys(config.mcp).length : 0}</span>
                       <Button
@@ -318,13 +338,13 @@ export function PresetsManager() {
                           else setSelectedMcps(allLocks);
                         }}
                       >
-                        {selectedMcps.length === (config?.mcp ? Object.keys(config.mcp).length : 0) ? "None" : "All"}
+                        {selectedMcps.length === (config?.mcp ? Object.keys(config.mcp).length : 0) ? t("presets.none") : t("presets.all")}
                       </Button>
                     </div>
                   </div>
                   <div className="flex-1 overflow-y-auto max-h-[65vh] p-2 space-y-1">
                     {!config?.mcp || Object.keys(config.mcp).length === 0 ? (
-                      <p className="text-xs text-muted-foreground italic p-2">No MCP servers found</p>
+                      <p className="text-xs text-muted-foreground italic p-2">{t("presets.noMcpServersFound")}</p>
                     ) : (
                       Object.keys(config.mcp).map(key => (
                         <div key={key} className="flex items-start justify-between gap-3 p-2 rounded hover:bg-muted/50 text-sm">
@@ -347,10 +367,27 @@ export function PresetsManager() {
             </div>
           </div>
           <DialogFooter>
-            <Button onClick={handleCreate}>Save Preset</Button>
+            <Button onClick={handleCreate}>{t("presets.savePreset")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("presets.deleteTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("presets.deleteConfirm", { name: deleteTarget?.name || '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm}>
+              {t("delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

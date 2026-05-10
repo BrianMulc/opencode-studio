@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -70,10 +71,10 @@ interface AccountPoolCardProps {
   providerName?: string;
 }
 
-function formatTimeRemaining(until: number | null): string {
+function formatTimeRemaining(until: number | null, readyText: string = "Ready"): string {
   if (!until) return "";
   const diff = until - Date.now();
-  if (diff <= 0) return "Ready";
+  if (diff <= 0) return readyText;
   const mins = Math.floor(diff / 60000);
   const hours = Math.floor(mins / 60);
   if (hours > 0) return `${hours}h ${mins % 60}m`;
@@ -128,6 +129,7 @@ export function AccountPoolCard({
   providerName = "Google",
   cooldownRules = [],
 }: AccountPoolCardProps) {
+  const t = useTranslations("common");
   const [cooldownTimers, setCooldownTimers] = useState<Record<string, string>>({});
   const [renameOpen, setRenameOpen] = useState(false);
   const [cooldownOpen, setCooldownOpen] = useState(false);
@@ -207,7 +209,7 @@ export function AccountPoolCard({
       const timers: Record<string, string> = {};
       pool.accounts.forEach((acc) => {
         if (acc.status === "cooldown" && acc.cooldownUntil) {
-          timers[acc.name] = formatTimeRemaining(acc.cooldownUntil);
+          timers[acc.name] = formatTimeRemaining(acc.cooldownUntil, t("accountPool.ready"));
         }
       });
       setCooldownTimers(timers);
@@ -223,9 +225,9 @@ export function AccountPoolCard({
       <Card className="border-dashed">
         <CardContent className="p-6 text-center">
           <Users className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-          <p className="text-sm text-muted-foreground">No accounts in pool</p>
+          <p className="text-sm text-muted-foreground">{t("accountPool.noAccounts")}</p>
           <p className="text-xs text-muted-foreground mt-1">
-            Add {providerName} accounts to enable multi-account rotation
+            {t("accountPool.addAccountsHint", { providerName })}
           </p>
           <Button 
             onClick={onAddAccount} 
@@ -233,7 +235,7 @@ export function AccountPoolCard({
             variant="outline"
             className="mt-4"
           >
-            {isAdding ? "Connecting..." : `Add ${providerName} Account`}
+            {isAdding ? t("accountPool.connecting") : t("accountPool.addAccount", { providerName })}
           </Button>
         </CardContent>
       </Card>
@@ -251,9 +253,9 @@ export function AccountPoolCard({
               <Users className="h-4 w-4" />
             </div>
             <div>
-              <h3 className="text-sm font-medium leading-none tracking-tight">{providerName} Pool</h3>
+              <h3 className="text-sm font-medium leading-none tracking-tight">{t("accountPool.poolTitle", { providerName })}</h3>
               <p className="text-xs text-muted-foreground mt-1 font-mono">
-                {pool.availableAccounts} / {pool.totalAccounts} available
+                {t("accountPool.availableCount", { available: pool.availableAccounts, total: pool.totalAccounts })}
               </p>
             </div>
           </div>
@@ -264,7 +266,7 @@ export function AccountPoolCard({
                 size="icon" 
                 className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" 
                 onClick={() => setClearAllOpen(true)}
-                title="Clear All"
+                title={t("accountPool.clearAll")}
               >
                 <Trash className="h-4 w-4" />
               </Button>
@@ -272,11 +274,11 @@ export function AccountPoolCard({
             <div className="h-4 w-px bg-border mx-1" />
             <Button variant="outline" size="sm" onClick={onAddAccount} disabled={isAdding} className="h-8 text-xs font-medium">
               <Plus className="h-3.5 w-3.5 mr-1.5" />
-              Add
+              {t("accountPool.addBtn")}
             </Button>
             <Button variant="outline" size="sm" onClick={onRotate} disabled={rotating} className="h-8 text-xs font-medium">
               <Reload className={`h-3.5 w-3.5 mr-1.5 ${rotating ? "animate-spin" : ""}`} />
-              Next
+              {t("accountPool.nextBtn")}
             </Button>
           </div>
         </div>
@@ -292,19 +294,19 @@ export function AccountPoolCard({
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium truncate text-foreground">{account.email || account.name}</span>
-                    {account.status === 'active' && <Badge variant="secondary" className="text-[10px] h-5 px-1.5 font-medium bg-green-500/10 text-green-700 hover:bg-green-500/20 border-0">Active</Badge>}
-                    {account.status === 'cooldown' && <Badge variant="secondary" className="text-[10px] h-5 px-1.5 font-medium bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 border-0">Cooldown</Badge>}
+                    {account.status === 'active' && <Badge variant="secondary" className="text-[10px] h-5 px-1.5 font-medium bg-green-500/10 text-green-700 hover:bg-green-500/20 border-0">{t("accountPool.active")}</Badge>}
+                    {account.status === 'cooldown' && <Badge variant="secondary" className="text-[10px] h-5 px-1.5 font-medium bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 border-0">{t("accountPool.cooldown")}</Badge>}
                   </div>
                   <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground font-mono">
                     <span className="flex items-center gap-1">
-                        <span className="font-semibold text-foreground/80">{account.usageCount}</span> reqs
+                        <span className="font-semibold text-foreground/80">{account.usageCount}</span> {t("accountPool.reqs")}
                     </span>
                     {account.status === 'cooldown' && cooldownTimers[account.name] && (
                       <>
                         <span className="w-1 h-1 rounded-full bg-border" />
                         <span className="flex items-center gap-1 text-amber-600 dark:text-amber-500 font-medium">
                           <Clock className="h-3 w-3" />
-                          {cooldownTimers[account.name]} left
+                          {t("accountPool.timeLeft", { time: cooldownTimers[account.name] })}
                         </span>
                       </>
                     )}
@@ -320,7 +322,7 @@ export function AccountPoolCard({
                     className="h-8 px-3 text-xs font-medium opacity-0 group-hover:opacity-100 transition-all data-[state=open]:opacity-100 bg-primary/5 hover:bg-primary/10 text-primary" 
                     onClick={() => onActivate(account.name)}
                   >
-                    Switch
+                    {t("accountPool.switchBtn")}
                   </Button>
                 )}
                 
@@ -334,35 +336,35 @@ export function AccountPoolCard({
                     {account.status !== "active" && (
                       <DropdownMenuItem onClick={() => onActivate(account.name)}>
                         <Check className="h-4 w-4 mr-2" />
-                        Set Active
+                        {t("accountPool.setActive")}
                       </DropdownMenuItem>
                     )}
                     {account.status === "cooldown" ? (
                       <DropdownMenuItem onClick={() => onClearCooldown(account.name)}>
                         <Play className="h-4 w-4 mr-2" />
-                        Clear Cooldown
+                        {t("accountPool.clearCooldown")}
                       </DropdownMenuItem>
                     ) : (
                       <DropdownMenuItem onClick={() => handleCooldownClick(account.name)}>
                         <Sun className="h-4 w-4 mr-2" />
-                        Mark Cooldown
+                        {t("accountPool.markCooldown")}
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => onRemove(account.name)} className="text-destructive focus:text-destructive">
-                      <Trash className="h-4 w-4 mr-2" />
-                      Remove Account
+                      <DropdownMenuItem onClick={() => onRemove(account.name)} className="text-destructive focus:text-destructive">
+                        <Trash className="h-4 w-4 mr-2" />
+                        {t("accountPool.removeAccount")}
                     </DropdownMenuItem>
                     {onRename && (
                       <DropdownMenuItem onClick={() => handleRenameClick(account.name)}>
                         <EditBox className="h-4 w-4 mr-2" />
-                        Rename
+                        {t("accountPool.rename")}
                       </DropdownMenuItem>
                     )}
                     {onEditMetadata && (
                       <DropdownMenuItem onClick={() => handleEditMetadataClick(account)}>
                         <CreditCardSettings className="h-4 w-4 mr-2" />
-                        Edit Metadata
+                        {t("accountPool.editMetadata")}
                       </DropdownMenuItem>
                     )}
                   </DropdownMenuContent>
@@ -376,10 +378,10 @@ export function AccountPoolCard({
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Rename Profile</DialogTitle>
+            <DialogTitle>{t("accountPool.renameProfile")}</DialogTitle>
           </DialogHeader>
           <div className="py-4">
-            <Label>New Name</Label>
+            <Label>{t("accountPool.newName")}</Label>
             <Input 
               value={newName} 
               onChange={(e) => setNewName(e.target.value)} 
@@ -388,8 +390,8 @@ export function AccountPoolCard({
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRenameOpen(false)}>Cancel</Button>
-            <Button onClick={handleRenameSubmit}>Save</Button>
+            <Button variant="outline" onClick={() => setRenameOpen(false)}>{t("accountPool.cancel")}</Button>
+            <Button onClick={handleRenameSubmit}>{t("accountPool.save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -397,29 +399,29 @@ export function AccountPoolCard({
       <Dialog open={metadataOpen} onOpenChange={setMetadataOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Metadata</DialogTitle>
+            <DialogTitle>{t("accountPool.editMetadata")}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label>Project ID</Label>
-              <Input 
-                value={editProjectId} 
-                onChange={(e) => setEditProjectId(e.target.value)} 
-                placeholder="e.g. my-project-123"
+              <Label>{t("accountPool.projectId")}</Label>
+              <Input
+                value={editProjectId}
+                onChange={(e) => setEditProjectId(e.target.value)}
+                placeholder={t("accountPool.projectIdPlaceholder")}
               />
             </div>
             <div className="grid gap-2">
-              <Label>Tier</Label>
-              <Input 
-                value={editTier} 
-                onChange={(e) => setEditTier(e.target.value)} 
-                placeholder="e.g. free, paid"
+              <Label>{t("accountPool.tier")}</Label>
+              <Input
+                value={editTier}
+                onChange={(e) => setEditTier(e.target.value)}
+                placeholder={t("accountPool.tierPlaceholder")}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setMetadataOpen(false)}>Cancel</Button>
-            <Button onClick={handleMetadataSubmit}>Save</Button>
+            <Button variant="outline" onClick={() => setMetadataOpen(false)}>{t("accountPool.cancel")}</Button>
+            <Button onClick={handleMetadataSubmit}>{t("accountPool.save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -427,7 +429,7 @@ export function AccountPoolCard({
       <Dialog open={cooldownOpen} onOpenChange={setCooldownOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Mark Cooldown</DialogTitle>
+            <DialogTitle>{t("accountPool.markCooldown")}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-2 py-4">
             {cooldownRules
@@ -452,7 +454,7 @@ export function AccountPoolCard({
                 </div>
             ))}
             <Button variant="outline" onClick={() => handleCooldownSubmit()} className="justify-between w-full">
-              <span>Default</span>
+              <span>{t("accountPool.default")}</span>
               <span className="text-xs text-muted-foreground">1h</span>
             </Button>
 
@@ -460,37 +462,37 @@ export function AccountPoolCard({
               <div className="mt-2 pt-2 border-t">
                 {!addingRule ? (
                     <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={() => setAddingRule(true)}>
-                      <Plus className="h-3 w-3 mr-2" /> Add Preset
-                    </Button>
+                       <Plus className="h-3 w-3 mr-2" /> {t("accountPool.addPreset")}
+                     </Button>
                 ) : (
                     <div className="space-y-2 p-2 bg-muted/30 rounded-md border">
-                      <Input 
-                        placeholder="Name (e.g. Rate Limit)" 
-                        value={newRuleName} 
-                        onChange={e => setNewRuleName(e.target.value)} 
-                        className="h-8 text-xs" 
+                      <Input
+                        placeholder={t("accountPool.ruleNamePlaceholder")}
+                        value={newRuleName}
+                        onChange={e => setNewRuleName(e.target.value)}
+                        className="h-8 text-xs"
                       />
                       <div className="flex gap-2">
-                          <Input 
-                            type="number" 
-                            placeholder="Duration" 
-                            value={newRuleDuration} 
-                            onChange={e => setNewRuleDuration(e.target.value)} 
-                            className="h-8 text-xs flex-1" 
+                          <Input
+                            type="number"
+                            placeholder={t("accountPool.durationPlaceholder")}
+                            value={newRuleDuration}
+                            onChange={e => setNewRuleDuration(e.target.value)}
+                            className="h-8 text-xs flex-1"
                           />
-                          <select 
-                            className="h-8 text-xs border rounded bg-background px-2 w-20" 
-                            value={newRuleUnit} 
+                          <select
+                            className="h-8 text-xs border rounded bg-background px-2 w-20"
+                            value={newRuleUnit}
                             onChange={e => setNewRuleUnit(e.target.value)}
                           >
-                            <option value="m">min</option>
-                            <option value="h">hour</option>
-                            <option value="d">day</option>
+                            <option value="m">{t("accountPool.min")}</option>
+                            <option value="h">{t("accountPool.hour")}</option>
+                            <option value="d">{t("accountPool.day")}</option>
                           </select>
                       </div>
                       <div className="flex gap-2">
-                          <Button size="sm" variant="ghost" className="flex-1 h-7 text-xs" onClick={() => setAddingRule(false)}>Cancel</Button>
-                          <Button size="sm" className="flex-1 h-7 text-xs" onClick={handleAddRule} disabled={!newRuleName || !newRuleDuration}>Save</Button>
+                          <Button size="sm" variant="ghost" className="flex-1 h-7 text-xs" onClick={() => setAddingRule(false)}>{t("accountPool.cancel")}</Button>
+                          <Button size="sm" className="flex-1 h-7 text-xs" onClick={handleAddRule} disabled={!newRuleName || !newRuleDuration}>{t("accountPool.save")}</Button>
                       </div>
                     </div>
                 )}
@@ -498,7 +500,7 @@ export function AccountPoolCard({
             )}
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setCooldownOpen(false)}>Cancel</Button>
+            <Button variant="ghost" onClick={() => setCooldownOpen(false)}>{t("accountPool.cancel")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -506,18 +508,18 @@ export function AccountPoolCard({
       <AlertDialog open={clearAllOpen} onOpenChange={setClearAllOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Clear All Accounts?</AlertDialogTitle>
+            <AlertDialogTitle>{t("accountPool.clearAllTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove all {providerName} accounts from the pool. This action cannot be undone.
+              {t("accountPool.clearAllDescription", { providerName })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("accountPool.cancel")}</AlertDialogCancel>
             <AlertDialogAction 
               onClick={() => { onClearAll?.(); setClearAllOpen(false); }} 
               className="bg-destructive hover:bg-destructive/90"
             >
-              Clear All
+              {t("accountPool.clearAll")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

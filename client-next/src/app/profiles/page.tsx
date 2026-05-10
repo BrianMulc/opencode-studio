@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import axios from "axios";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ import { getProfiles, createProfile, deleteProfile, activateProfile, type Profil
 import { PageHelp } from "@/components/page-help";
 
 export default function ProfilesPage() {
+  const t = useTranslations('profiles');
   const [data, setData] = useState<ProfileList | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -51,7 +53,7 @@ export default function ProfilesPage() {
       setData(res);
     } catch (e) {
       const msg = getErrorMessage(e);
-      toast.error(msg ? `Failed to load profiles: ${msg}` : "Failed to load profiles");
+      toast.error(msg ? t('loadFailedWithError', { error: msg }) : t('loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -66,13 +68,13 @@ export default function ProfilesPage() {
     try {
       setCreating(true);
       await createProfile(newProfileName);
-      toast.success(`Profile ${newProfileName} created`);
+      toast.success(t('createSuccess', { name: newProfileName }));
       setCreateOpen(false);
       setNewProfileName("");
       loadProfiles();
     } catch (e) {
       const msg = getErrorMessage(e);
-      toast.error(msg ? `Failed to create profile: ${msg}` : "Failed to create profile");
+      toast.error(msg ? t('createFailedWithError', { error: msg }) : t('createFailed'));
     } finally {
       setCreating(false);
     }
@@ -82,11 +84,11 @@ export default function ProfilesPage() {
     if (!deleteTarget) return;
     try {
       await deleteProfile(deleteTarget);
-      toast.success("Profile deleted");
+      toast.success(t('deleted'));
       loadProfiles();
     } catch (e) {
       const msg = getErrorMessage(e);
-      toast.error(msg ? `Failed to delete profile: ${msg}` : "Failed to delete profile");
+      toast.error(msg ? t('deleteFailedWithError', { error: msg }) : t('deleteFailed'));
     } finally {
       setDeleteTarget(null);
     }
@@ -96,18 +98,18 @@ export default function ProfilesPage() {
     try {
       setActivating(name);
       await activateProfile(name);
-      toast.success(`Switched to ${name}`);
+      toast.success(t('switchSuccess', { name }));
       loadProfiles();
     } catch (e) {
       const msg = getErrorMessage(e);
-      toast.error(msg ? `Failed to switch profile: ${msg}` : "Failed to switch profile");
+      toast.error(msg ? t('switchFailedWithError', { error: msg }) : t('switchFailed'));
     } finally {
       setActivating(null);
     }
   };
 
   if (loading) {
-    return <div className="p-8">Loading...</div>;
+    return <div className="p-8">{t('loading')}</div>;
   }
 
   return (
@@ -116,43 +118,43 @@ export default function ProfilesPage() {
         <div>
           <div className="text-3xl font-bold tracking-tight flex items-center gap-3">
             <PageHelp
-              title="Profiles"
+              title={t('title')}
               docUrl="https://opencode.ai/docs"
-              docTitle="Profiles Documentation"
+              docTitle={t('docTitle')}
             />
             <Badge variant="outline" className="font-mono text-xs font-normal">
-              {data?.active ? `Active: ${data.active}` : "No active profile"}
+              {data?.active ? t('activeProfile', { name: data.active }) : t('noActiveProfile')}
             </Badge>
           </div>
           <p className="text-muted-foreground mt-1">
-            Manage isolated OpenCode environments (configs, history, sessions).
+            {t('description')}
           </p>
         </div>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
             <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              New Profile
+               <Plus className="h-4 w-4 mr-2" />
+              {t('newProfile')}
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create Profile</DialogTitle>
+              <DialogTitle>{t('createTitle')}</DialogTitle>
               <DialogDescription>
-                Create a new isolated configuration environment.
+                {t('createDescription')}
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">
               <Input
-                placeholder="Profile Name (e.g. work)"
+                placeholder={t('namePlaceholder')}
                 value={newProfileName}
                 onChange={(e) => setNewProfileName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
               />
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-              <Button onClick={handleCreate} disabled={!newProfileName.trim() || creating}>Create</Button>
+              <Button variant="outline" onClick={() => setCreateOpen(false)}>{t('cancel')}</Button>
+              <Button onClick={handleCreate} disabled={!newProfileName.trim() || creating}>{t('create')}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -171,7 +173,7 @@ export default function ProfilesPage() {
                     </div>
                     <div>
                       <CardTitle className="text-lg">{profile}</CardTitle>
-                      {isActive && <Badge className="mt-1">Active</Badge>}
+                      {isActive && <Badge className="mt-1">{t('active')}</Badge>}
                     </div>
                   </div>
                 </div>
@@ -180,8 +182,8 @@ export default function ProfilesPage() {
                 <div className="flex gap-2 mt-4">
                   {isActive ? (
                     <Button disabled className="w-full" variant="secondary">
-                      <Check className="h-4 w-4 mr-2" />
-                      Current
+                       <Check className="h-4 w-4 mr-2" />
+                      {t('current')}
                     </Button>
                   ) : (
                     <Button 
@@ -190,8 +192,8 @@ export default function ProfilesPage() {
                       onClick={() => handleActivate(profile)}
                       disabled={activating === profile}
                     >
-                      <Play className="h-4 w-4 mr-2" />
-                      Switch
+                       <Play className="h-4 w-4 mr-2" />
+                      {t('switch')}
                     </Button>
                   )}
                   
@@ -215,15 +217,15 @@ export default function ProfilesPage() {
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Profile?</AlertDialogTitle>
+            <AlertDialogTitle>{t('deleteTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the profile "{deleteTarget}" and all its configuration and history.
+              {t('deleteDescription', { name: deleteTarget ?? '' })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('cancelBtn')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">
-              Delete
+              {t('deleteBtn')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useMemo } from "react";
+import { useTranslations } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getUsageStats, UsageStats } from "@/lib/api";
 import { Loader, Dollar, Message, Calendar, Download, TrendingUp, Sliders, Users, Image as ImageIcon, ChartBar, Chart as PieChartIcon, Trending } from "@nsmr/pixelart-react";
@@ -54,16 +55,17 @@ const COLORS = ["#D1C6C6", "#AC9F9F", "#877A7A", "#615757", "#3C3636"];
 const STACK_COLORS = [...COLORS].reverse();
 
 const TIME_RANGES = [
-  { label: "24 Hours", value: "24h", granularity: "hourly" },
-  { label: "7 Days", value: "7d", granularity: "daily" },
-  { label: "30 Days", value: "30d", granularity: "daily" },
-  { label: "3 Months", value: "3m", granularity: "daily" },
-  { label: "6 Months", value: "6m", granularity: "weekly" },
-  { label: "1 Year", value: "1y", granularity: "monthly" },
-  { label: "Custom", value: "custom", granularity: "daily" },
+  { labelKey: "range24h", value: "24h", granularity: "hourly" },
+  { labelKey: "range7d", value: "7d", granularity: "daily" },
+  { labelKey: "range30d", value: "30d", granularity: "daily" },
+  { labelKey: "range3m", value: "3m", granularity: "daily" },
+  { labelKey: "range6m", value: "6m", granularity: "weekly" },
+  { labelKey: "range1y", value: "1y", granularity: "monthly" },
+  { labelKey: "rangeCustom", value: "custom", granularity: "daily" },
 ];
 
 export default function UsagePage() {
+  const t = useTranslations('usage');
   const [stats, setStats] = useState<UsageStats | null>(null);
   const [loading, setLoading] = useState(true);
   const dashboardRef = useRef<HTMLDivElement>(null);
@@ -94,11 +96,11 @@ export default function UsagePage() {
 
   const applyCustomRange = () => {
     if (!customRange.start || !customRange.end) {
-      setCustomError("Select both start and end dates.");
+      setCustomError(t('selectBothDates'));
       return;
     }
     if (new Date(customRange.start) > new Date(customRange.end)) {
-      setCustomError("Start date must be before end date.");
+      setCustomError(t('startDateBefore'));
       return;
     }
     setCustomError(null);
@@ -173,7 +175,7 @@ export default function UsagePage() {
       setStats(enrichedStats);
     } catch (e: any) {
       const msg = e.response?.data?.error || e.message || "Unknown error";
-      toast.error(`Failed to fetch usage stats: ${msg}`);
+      toast.error(t('fetchFailed', { error: msg }));
       console.error(e);
     } finally {
       setLoading(false);
@@ -253,7 +255,7 @@ export default function UsagePage() {
 
   const exportToCSV = () => {
     if (!stats) return;
-    const headers = ["Model", "Input Tokens", "Output Tokens", "Total Tokens", "Est. Cost"];
+    const headers = [t('csvModel'), t('csvInputTokens'), t('csvOutputTokens'), t('csvTotalTokens'), t('csvEstCost')];
     const rows = stats.byModel.map(m => [
       m.name,
       m.inputTokens,
@@ -304,12 +306,12 @@ export default function UsagePage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <PageHelp
-            title="Token Usage"
+            title={t('title')}
             docUrl="https://opencode.ai/docs"
-            docTitle="Usage Documentation"
+            docTitle={t('docTitle')}
           />
           <p className="text-muted-foreground text-sm mt-1">
-            Analysis of spending and token consumption across your projects.
+            {t('description')}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -321,8 +323,8 @@ export default function UsagePage() {
                 </div>
              </SelectTrigger>
              <SelectContent>
-                {TIME_RANGES.map((r) => (
-                   <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                 {TIME_RANGES.map((r) => (
+                   <SelectItem key={r.value} value={r.value}>{t(r.labelKey)}</SelectItem>
                 ))}
              </SelectContent>
           </Select>
@@ -330,12 +332,12 @@ export default function UsagePage() {
           <Dialog open={customDialogOpen} onOpenChange={closeCustomDialog}>
             <DialogContent className="max-w-sm">
               <DialogHeader>
-                <DialogTitle>Custom Date Range</DialogTitle>
-                <DialogDescription>Select a start and end date.</DialogDescription>
+                <DialogTitle>{t('customDateRange')}</DialogTitle>
+                <DialogDescription>{t('selectDateRange')}</DialogDescription>
               </DialogHeader>
               <div className="space-y-3 py-2">
                 <div className="space-y-1">
-                  <Label htmlFor="custom-start" className="text-xs text-muted-foreground">Start Date</Label>
+                  <Label htmlFor="custom-start" className="text-xs text-muted-foreground">{t('startDate')}</Label>
                   <Input
                     id="custom-start"
                     type="date"
@@ -347,7 +349,7 @@ export default function UsagePage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="custom-end" className="text-xs text-muted-foreground">End Date</Label>
+                  <Label htmlFor="custom-end" className="text-xs text-muted-foreground">{t('endDate')}</Label>
                   <Input
                     id="custom-end"
                     type="date"
@@ -364,9 +366,9 @@ export default function UsagePage() {
               </div>
               <DialogFooter className="gap-2">
                 <Button variant="outline" size="sm" onClick={() => closeCustomDialog(false)}>
-                  Cancel
+                  {t('cancel')}
                 </Button>
-                <Button size="sm" onClick={applyCustomRange}>Apply</Button>
+                <Button size="sm" onClick={applyCustomRange}>{t('apply')}</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -375,11 +377,11 @@ export default function UsagePage() {
             <SelectTrigger className="w-[160px] h-9 text-xs">
               <div className="flex items-center gap-2">
                 <Sliders className="h-3.5 w-3.5 text-muted-foreground" />
-                <SelectValue placeholder="All Projects" />
+                <SelectValue placeholder={t('allProjects')} />
               </div>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Projects</SelectItem>
+              <SelectItem value="all">{t('allProjects')}</SelectItem>
               {(stats.byProject || []).map((proj) => (
                 <SelectItem key={proj.id} value={proj.id}>
                   {proj.name}
@@ -398,10 +400,10 @@ export default function UsagePage() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={exportToCSV}>
-                <Download className="h-4 w-4 mr-2" /> Export CSV
+                <Download className="h-4 w-4 mr-2" /> {t('exportCsv')}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={exportToImage}>
-                <ImageIcon className="h-4 w-4 mr-2" /> Save Screenshot
+                <ImageIcon className="h-4 w-4 mr-2" /> {t('saveScreenshot')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -411,34 +413,34 @@ export default function UsagePage() {
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="hover-lift border-primary/10 shadow-sm bg-muted/5">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Total Cost</CardTitle>
+            <CardTitle className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('totalCost')}</CardTitle>
             <Dollar className="h-3 w-3 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold tracking-tighter text-foreground">{formatCurrency(stats.totalCost)}</div>
-            <p className="text-[10px] text-muted-foreground mt-1">Estimated total spend</p>
+            <p className="text-[10px] text-muted-foreground mt-1">{t('estimatedTotalSpend')}</p>
           </CardContent>
         </Card>
 
         <Card className="hover-lift border-primary/10 shadow-sm bg-muted/5">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Input Volume</CardTitle>
+            <CardTitle className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('inputVolume')}</CardTitle>
             <Message className="h-3 w-3 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold tracking-tighter text-foreground">{formatTokens(totalInputTokens)}</div>
-            <p className="text-[10px] text-muted-foreground mt-1">Context and prompts</p>
+            <p className="text-[10px] text-muted-foreground mt-1">{t('contextAndPrompts')}</p>
           </CardContent>
         </Card>
 
         <Card className="hover-lift border-primary/10 shadow-sm bg-muted/5">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Output Volume</CardTitle>
+            <CardTitle className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('outputVolume')}</CardTitle>
             <TrendingUp className="h-3 w-3 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold tracking-tighter text-foreground">{formatTokens(totalOutputTokens)}</div>
-            <p className="text-[10px] text-muted-foreground mt-1">AI responses</p>
+            <p className="text-[10px] text-muted-foreground mt-1">{t('aiResponses')}</p>
           </CardContent>
         </Card>
       </div>
@@ -448,7 +450,7 @@ export default function UsagePage() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b bg-muted/10 pb-3 mb-4 px-6">
             <CardTitle className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
               <ChartBar className="h-3.5 w-3.5 text-primary" />
-              Usage Timeline
+              {t('usageTimeline')}
             </CardTitle>
           </CardHeader>
             <CardContent className="h-[300px] w-full min-h-0 px-6 pt-4">
@@ -480,15 +482,15 @@ export default function UsagePage() {
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Input Cost</span>
+                      <span className="text-muted-foreground">{t('inputCost')}</span>
                       <span data-bar-input className="font-mono"></span>
                     </div>
                     <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Output Cost</span>
+                      <span className="text-muted-foreground">{t('outputCost')}</span>
                       <span data-bar-output className="font-mono"></span>
                     </div>
                     <div className="flex justify-between gap-4 border-t pt-1 mt-0.5 font-bold">
-                      <span>Total Cost</span>
+                      <span>{t('totalCostLabel')}</span>
                       <span data-bar-total className="text-primary"></span>
                     </div>
                   </div>
@@ -565,7 +567,7 @@ export default function UsagePage() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b bg-muted/10 pb-3 mb-4 px-6">
             <CardTitle className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
               <PieChartIcon className="h-3.5 w-3.5 text-primary" />
-              Cost Breakdown
+              {t('costBreakdown')}
             </CardTitle>
             {stats.byModel.length > 6 && (
               <Button
@@ -574,7 +576,7 @@ export default function UsagePage() {
                 className="h-7 text-[10px] px-2"
                 onClick={() => setShowAllModels(!showAllModels)}
               >
-                {showAllModels ? "Show less" : "View all"}
+                {showAllModels ? t('showLess') : t('viewAll')}
               </Button>
             )}
           </CardHeader>
@@ -676,15 +678,15 @@ export default function UsagePage() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b bg-muted/10 py-3 px-6">
             <CardTitle className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
               <Users className="h-3.5 w-3.5 text-primary" />
-              Top Projects
+              {t('topProjects')}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0 flex-1 overflow-auto max-h-[400px]">
             <table className="w-full text-[11px] text-left border-collapse">
               <thead>
                 <tr className="bg-muted text-muted-foreground border-b text-[9px] uppercase font-bold sticky top-0 z-10">
-                  <th className="px-6 py-2">Project</th>
-                  <th className="px-6 py-2 text-right">Estimated Cost</th>
+                  <th className="px-6 py-2">{t('project')}</th>
+                  <th className="px-6 py-2 text-right">{t('estimatedCost')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/20">
@@ -710,7 +712,7 @@ export default function UsagePage() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b bg-muted/10 py-3 px-6">
             <CardTitle className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
               <Trending className="h-3.5 w-3.5 text-primary" />
-              Model Performance Analysis
+              {t('modelAnalysis')}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0 flex-1 overflow-auto max-h-[400px]">
@@ -718,10 +720,10 @@ export default function UsagePage() {
               <table className="w-full text-[11px] text-left border-collapse">
                 <thead className="sticky top-0 bg-muted z-10 shadow-sm">
                   <tr className="text-muted-foreground border-b text-[9px] uppercase tracking-wider font-bold">
-                    <th className="px-6 py-2">Model Interface</th>
-                    <th className="px-6 py-2 text-right">Input</th>
-                    <th className="px-6 py-2 text-right">Output</th>
-                    <th className="px-6 py-2 text-right text-primary">Cost</th>
+                    <th className="px-6 py-2">{t('modelInterface')}</th>
+                    <th className="px-6 py-2 text-right">{t('input')}</th>
+                    <th className="px-6 py-2 text-right">{t('output')}</th>
+                    <th className="px-6 py-2 text-right text-primary">{t('cost')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/30">

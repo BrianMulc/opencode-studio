@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { getCommands, saveCommand, deleteCommand } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Plus, Trash, Edit, Command, Logout } from "@nsmr/pixelart-react";
 import { PageHelp } from "@/components/page-help";
 import { toast } from "sonner";
@@ -25,6 +36,7 @@ interface CommandEntry {
 }
 
 export default function CommandsPage() {
+  const t = useTranslations('commands');
   const [commands, setCommands] = useState<CommandEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
@@ -32,6 +44,8 @@ export default function CommandsPage() {
   const [newTemplate, setNewTemplate] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [editingCmd, setEditingCmd] = useState<{ originalName: string, name: string, template: string } | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const fetchCommands = async () => {
     try {
@@ -43,7 +57,7 @@ export default function CommandsPage() {
       }));
       setCommands(entries);
     } catch (err: any) {
-      toast.error("Failed to load commands");
+      toast.error(t('loadFailed'));
       console.error(err);
     } finally {
       setLoading(false);
@@ -56,27 +70,27 @@ export default function CommandsPage() {
 
   const handleAdd = async () => {
     if (!newName.trim()) {
-      toast.error("Command name is required");
+      toast.error(t('nameRequired'));
       return;
     }
     if (!newTemplate.trim()) {
-      toast.error("Template is required");
+      toast.error(t('templateRequired'));
       return;
     }
     if (commands.some(c => c.name === newName.trim())) {
-      toast.error("Command already exists");
+      toast.error(t('alreadyExists'));
       return;
     }
 
     try {
       await saveCommand(newName.trim(), newTemplate);
-      toast.success(`Command "${newName}" created`);
+      toast.success(t('createSuccess', { name: newName }));
       setNewName("");
       setNewTemplate("");
       setAddOpen(false);
       fetchCommands();
     } catch {
-      toast.error("Failed to create command");
+      toast.error(t('createFailed'));
     }
   };
 
@@ -85,17 +99,17 @@ export default function CommandsPage() {
   const handleEditSave = async () => {
     if (!editingCmd) return;
     if (!editingCmd.name.trim()) {
-      toast.error("Command name is required");
+      toast.error(t('nameRequired'));
       return;
     }
     if (!editingCmd.template.trim()) {
-      toast.error("Template is required");
+      toast.error(t('templateRequired'));
       return;
     }
     
     // Check for duplicate name only if name changed
     if (editingCmd.name !== editingCmd.originalName && commands.some(c => c.name === editingCmd.name.trim())) {
-      toast.error("Command already exists");
+      toast.error(t('alreadyExists'));
       return;
     }
 
@@ -104,25 +118,31 @@ export default function CommandsPage() {
         await deleteCommand(editingCmd.originalName);
       }
       await saveCommand(editingCmd.name.trim(), editingCmd.template);
-      toast.success(`Command "${editingCmd.name}" updated`);
+      toast.success(t('updateSuccess', { name: editingCmd.name }));
       setEditOpen(false);
       setEditingCmd(null);
       fetchCommands();
     } catch {
-      toast.error("Failed to update command");
+      toast.error(t('updateFailed'));
     }
   };
 
 
-  const handleDelete = async (name: string) => {
-    if (!confirm(`Delete command "${name}"?`)) return;
+  const handleDelete = (name: string) => {
+    setDeleteTarget(name);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
 
     try {
-      await deleteCommand(name);
-      toast.success(`Command "${name}" deleted`);
+      await deleteCommand(deleteTarget);
+      toast.success(t('deleteSuccess', { name: deleteTarget }));
+      setDeleteDialogOpen(false);
       fetchCommands();
     } catch {
-      toast.error("Failed to delete command");
+      toast.error(t('deleteFailed'));
     }
   };
 
@@ -139,7 +159,7 @@ export default function CommandsPage() {
     return (
       <div className="space-y-4">
          <div className="flex justify-between items-center">
-          <PageHelp title="Commands" docUrl="https://opencode.ai/docs/commands" docTitle="Commands Documentation" />
+           <PageHelp title={t('title')} docUrl="https://opencode.ai/docs/commands" docTitle={t('docTitleFull')} />
         </div>
         <div className="grid grid-cols-1 gap-4">
           {[1, 2, 3].map((i) => (
@@ -153,49 +173,49 @@ export default function CommandsPage() {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <PageHelp title="Commands" docUrl="https://opencode.ai/docs" docTitle="Commands" />
+        <PageHelp title={t('title')} docUrl="https://opencode.ai/docs" docTitle={t('docTitle')} />
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
             <Button size="sm">
               <Plus className="h-4 w-4 mr-2" />
-              New Command
+              {t('newCommand')}
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Create New Command</DialogTitle>
+              <DialogTitle>{t('createTitle')}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="cmd-name">Command Name</Label>
+                <Label htmlFor="cmd-name">{t('commandName')}</Label>
                 <Input
                   id="cmd-name"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  placeholder="my-command"
+                  placeholder={t('commandNamePlaceholder')}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Use with /my-command in opencode
+                  {t('commandNameHint', { name: newName || 'my-command' })}
                 </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="cmd-template">Template</Label>
+                <Label htmlFor="cmd-template">{t('template')}</Label>
                 <Textarea
                   id="cmd-template"
                   value={newTemplate}
                   onChange={(e) => setNewTemplate(e.target.value)}
-                  placeholder="Your prompt template here. Use $ARGUMENTS for user input."
+                  placeholder={t('templatePlaceholder')}
                   className="font-mono text-sm min-h-[200px]"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Use $ARGUMENTS to include user-provided arguments
+                  {t('templateHint')}
                 </p>
               </div>
               <div className="flex justify-end gap-2">
                 <Button variant="ghost" onClick={() => setAddOpen(false)}>
-                  Cancel
+                  {t('cancel')}
                 </Button>
-                <Button onClick={handleAdd}>Create</Button>
+                <Button onClick={handleAdd}>{t('create')}</Button>
               </div>
             </div>
           </DialogContent>
@@ -203,22 +223,22 @@ export default function CommandsPage() {
         <Dialog open={editOpen} onOpenChange={setEditOpen}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Edit Command</DialogTitle>
+              <DialogTitle>{t('editTitle')}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-name">Command Name</Label>
+                <Label htmlFor="edit-name">{t('commandName')}</Label>
                 <Input
                   id="edit-name"
                   value={editingCmd?.name || ""}
                   onChange={(e) => setEditingCmd(prev => prev ? { ...prev, name: e.target.value } : null)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Use with /{editingCmd?.name} in opencode
+                  {t('editNameHint', { name: editingCmd?.name || '' })}
                 </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-template">Template</Label>
+                <Label htmlFor="edit-template">{t('template')}</Label>
                 <Textarea
                   id="edit-template"
                   value={editingCmd?.template || ""}
@@ -226,14 +246,14 @@ export default function CommandsPage() {
                   className="font-mono text-sm min-h-[200px]"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Use $ARGUMENTS to include user-provided arguments
+                  {t('templateHint')}
                 </p>
               </div>
               <div className="flex justify-end gap-2">
                 <Button variant="ghost" onClick={() => setEditOpen(false)}>
-                  Cancel
+                  {t('cancel')}
                 </Button>
-                <Button onClick={handleEditSave}>Save Changes</Button>
+                <Button onClick={handleEditSave}>{t('saveChanges')}</Button>
               </div>
             </div>
           </DialogContent>
@@ -241,7 +261,7 @@ export default function CommandsPage() {
       </div>
 
       {commands.length === 0 ? (
-        <p className="text-muted-foreground italic">No commands configured.</p>
+        <p className="text-muted-foreground italic">{t('noCommands')}</p>
       ) : (
         <div className="grid grid-cols-1 gap-4">
           {commands.map((cmd) => (
@@ -281,6 +301,22 @@ export default function CommandsPage() {
           ))}
         </div>
       )}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('deleteTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('deleteConfirm', { name: deleteTarget || '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm}>
+              {t('delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

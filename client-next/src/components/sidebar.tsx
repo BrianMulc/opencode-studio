@@ -8,8 +8,10 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { LanguageSwitcher } from "@/components/language-switcher";
 import { useApp } from "@/lib/context";
 import { PROTOCOL_URL, shutdownBackend } from "@/lib/api";
+import { useTranslations } from "next-intl";
 import {
   Tooltip,
   TooltipContent,
@@ -28,28 +30,29 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const navItems = [
-  { href: "/mcp", label: "MCP Servers", icon: Server },
-  { href: "/profiles", label: "Profiles", icon: CardStack },
-  { href: "/skills", label: "Skills", icon: Gamepad },
-  { href: "/plugins", label: "Plugins", icon: Code },
-  { href: "/commands", label: "Commands", icon: Command },
-  { href: "/agents", label: "Agents", icon: List },
-  { href: "/logs", label: "Logs", icon: File },
-  { href: "/rules", label: "Rules", icon: Sliders },
-  { href: "/settings/code", label: "Code Settings", icon: Code },
-  { href: "/usage", label: "Usage", icon: ChartBar },
-  { href: "/auth", label: "Auth", icon: Lock },
-  { href: "/settings", label: "Settings", icon: Sliders },
-  { href: "/config", label: "Raw Config", icon: File },
+  { href: "/mcp", label: "nav.mcpServers", icon: Server },
+  { href: "/profiles", label: "nav.profiles", icon: CardStack },
+  { href: "/skills", label: "nav.skills", icon: Gamepad },
+  { href: "/plugins", label: "nav.plugins", icon: Code },
+  { href: "/commands", label: "nav.commands", icon: Command },
+  { href: "/agents", label: "nav.agents", icon: List },
+  { href: "/logs", label: "nav.logs", icon: File },
+  { href: "/rules", label: "nav.rules", icon: Sliders },
+  { href: "/settings/code", label: "nav.codeSettings", icon: Code },
+  { href: "/usage", label: "nav.usage", icon: ChartBar },
+  { href: "/auth", label: "nav.auth", icon: Lock },
+  { href: "/settings", label: "nav.settings", icon: Sliders },
+  { href: "/config", label: "nav.rawConfig", icon: File },
 ];
 
 const bottomNavItems = [
-  { href: "/quickstart", label: "Quickstart", icon: Forward },
+  { href: "/quickstart", label: "nav.quickstart", icon: Forward },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const { connected } = useApp();
+  const t = useTranslations('sidebar');
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
 
   const handleLaunchBackend = () => {
@@ -95,12 +98,12 @@ export function Sidebar() {
                   >
                     <Link href={item.href}>
                       <item.icon className="h-4 w-4" style={{ color: isActive ? 'var(--oc-text-strong)' : 'var(--oc-icon)' }} />
-                      <span className="text-sm">{item.label}</span>
+                      <span className="text-sm">{t(item.label)}</span>
                     </Link>
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="right">
-                  <p>{item.label}</p>
+                  <p>{t(item.label)}</p>
                 </TooltipContent>
               </Tooltip>
             );
@@ -133,12 +136,12 @@ export function Sidebar() {
                   >
                     <Link href={item.href}>
                       <item.icon className="h-4 w-4" style={{ color: isActive ? 'var(--oc-text-strong)' : 'var(--oc-icon)' }} />
-                      <span className="text-sm">{item.label}</span>
+                      <span className="text-sm">{t(item.label)}</span>
                     </Link>
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="right">
-                  <p>{item.label}</p>
+                  <p>{t(item.label)}</p>
                 </TooltipContent>
               </Tooltip>
             );
@@ -149,7 +152,7 @@ export function Sidebar() {
           <div className="flex items-center gap-2">
             <Circle className={cn("h-2 w-2 fill-current", connected ? "text-green-500" : "text-red-500")} />
             <span className="text-xs text-muted-foreground">
-              {connected ? "Connected" : "Disconnected"}
+              {connected ? t('status.connected') : t('status.disconnected')}
             </span>
           </div>
           <div className="flex items-center gap-1">
@@ -161,7 +164,7 @@ export function Sidebar() {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Launch Backend</p>
+                  <p>{t('tooltips.launchBackend')}</p>
                 </TooltipContent>
               </Tooltip>
             )}
@@ -173,7 +176,7 @@ export function Sidebar() {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Disconnect Backend</p>
+                  <p>{t('tooltips.disconnectBackend')}</p>
                 </TooltipContent>
               </Tooltip>
             )}
@@ -186,24 +189,25 @@ export function Sidebar() {
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>GitHub</p>
+                <p>{t('tooltips.github')}</p>
               </TooltipContent>
             </Tooltip>
             <ThemeToggle />
+            <LanguageSwitcher />
           </div>
         </div>
 
         <AlertDialog open={showDisconnectDialog} onOpenChange={setShowDisconnectDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Disconnect Backend?</AlertDialogTitle>
+              <AlertDialogTitle>{t('disconnectDialog.title')}</AlertDialogTitle>
               <AlertDialogDescription>
-                This will shut down the backend server. You&apos;ll need to relaunch it to make changes to your OpenCode configuration.
+                {t('disconnectDialog.description')}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDisconnect}>Disconnect</AlertDialogAction>
+              <AlertDialogCancel>{t('disconnectDialog.cancel')}</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDisconnect}>{t('disconnectDialog.disconnect')}</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

@@ -4,6 +4,7 @@ import { WarningBox, Server, Copy, Check, Reload, Power } from "@nsmr/pixelart-r
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { shutdownBackend } from "@/lib/api";
+import { useTranslations } from "next-intl";
 
 interface UpdateRequiredModalProps {
   currentVersion: string | null;
@@ -11,6 +12,7 @@ interface UpdateRequiredModalProps {
 }
 
 export function UpdateRequiredModal({ currentVersion, minVersion }: UpdateRequiredModalProps) {
+  const t = useTranslations('dialogs');
   const [copied, setCopied] = useState(false);
   const [shuttingDown, setShuttingDown] = useState(false);
   const [serverStopped, setServerStopped] = useState(false);
@@ -41,25 +43,25 @@ export function UpdateRequiredModal({ currentVersion, minVersion }: UpdateRequir
             <WarningBox className="h-12 w-12 text-destructive" />
           </div>
           
-          <h1 className="text-2xl font-bold mb-2">Update Required</h1>
+          <h1 className="text-2xl font-bold mb-2">{t('updateRequired.title')}</h1>
           
           <p className="text-muted-foreground mb-6">
-            Your backend server is outdated and incompatible with this version of OpenCode Studio.
+            {t('updateRequired.description')}
           </p>
 
           <div className="w-full p-4 rounded-lg bg-muted/50 mb-6 space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Current version:</span>
-              <span className="font-mono text-destructive">{currentVersion || "unknown"}</span>
+              <span className="text-muted-foreground">{t('updateRequired.currentVersionLabel')}</span>
+              <span className="font-mono text-destructive">{currentVersion || t('updateRequired.unknown')}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Required version:</span>
+              <span className="text-muted-foreground">{t('updateRequired.requiredVersionLabel')}</span>
               <span className="font-mono text-primary">{minVersion}+</span>
             </div>
           </div>
 
           <div className="w-full space-y-3">
-            <p className="text-sm text-muted-foreground">Run this command to update:</p>
+            <p className="text-sm text-muted-foreground">{t('updateRequired.updateCommandLabel')}</p>
             <div className="flex items-center gap-2 p-3 rounded-lg bg-background border font-mono text-sm">
               <Server className="h-4 w-4 text-muted-foreground shrink-0" />
               <code className="flex-1 text-left truncate">{updateCommand}</code>
@@ -78,21 +80,21 @@ export function UpdateRequiredModal({ currentVersion, minVersion }: UpdateRequir
                 disabled={shuttingDown}
               >
                 <Power className="h-4 w-4 mr-2" />
-                {shuttingDown ? "Stopping..." : "Stop Server"}
+                {shuttingDown ? t('updateRequired.stopping') : t('updateRequired.stopServer')}
               </Button>
             ) : (
               <div className="flex-1 text-sm text-muted-foreground flex items-center justify-center">
-                Server stopped. Run update, then restart.
+                {t('updateRequired.serverStopped')}
               </div>
             )}
             <Button className="flex-1" onClick={handleRefresh}>
               <Reload className="h-4 w-4 mr-2" />
-              Check Again
+              {t('updateRequired.checkAgain')}
             </Button>
           </div>
 
           <p className="text-xs text-muted-foreground mt-4">
-            Stop server → run update → restart server → check again
+            {t('updateRequired.stepsHint')}
           </p>
         </div>
       </div>

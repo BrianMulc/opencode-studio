@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,6 +15,7 @@ import type { SkillInfo, PluginInfo } from "@/types";
 import { PageHelp } from "@/components/page-help";
 
 function EditorContent() {
+  const t = useTranslations('editor');
   const searchParams = useSearchParams();
   const router = useRouter();
   const type = searchParams.get("type") as "skills" | "plugins" | "commands" | null;
@@ -61,7 +63,7 @@ function EditorContent() {
           setCurrentName(name);
         }
       } catch {
-        toast.error("Failed to load file");
+        toast.error(t('loadFailed'));
         router.back();
       } finally {
         setLoading(false);
@@ -78,7 +80,7 @@ function EditorContent() {
       setSaving(true);
       if (type === "skills") {
         if (!description.trim()) {
-          toast.error("Description is required for skills");
+          toast.error(t('descriptionRequired'));
           return;
         }
         const targetName = currentName.trim() || name;
@@ -105,9 +107,9 @@ function EditorContent() {
       } else {
         await savePlugin(name, content);
       }
-      toast.success(`Saved ${currentName || name}`);
+      toast.success(t('saved', { name: currentName || name }));
     } catch {
-      toast.error("Failed to save file");
+      toast.error(t('saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -147,37 +149,37 @@ function EditorContent() {
                 onChange={(e) => setCurrentName(e.target.value)}
                 className="font-mono font-bold h-9"
               />
-              <PageHelp
-                title={type === "skills" ? "Edit Skill" : "Edit Command"}
-                docUrl={type === "skills" ? "https://opencode.ai/docs" : "https://opencode.ai/docs"}
-                docTitle={`${type === "skills" ? "Skill" : "Command"} Documentation`}
-              />
+               <PageHelp
+                 title={type === "skills" ? t('editSkill') : t('editCommand')}
+                 docUrl={type === "skills" ? "https://opencode.ai/docs" : "https://opencode.ai/docs"}
+                 docTitle={type === "skills" ? t('skillDoc') : t('commandDoc')}
+               />
             </div>
           ) : (
             <PageHelp
               title={name}
               docUrl="https://opencode.ai/docs"
-              docTitle="Plugin Documentation"
+              docTitle={t('pluginDoc')}
             />
           )}
         </div>
         <Button onClick={handleSave} disabled={saving}>
           <Save className="h-4 w-4 mr-2" />
-          {saving ? "Saving..." : "Save"}
+          {saving ? t('saving') : t('save')}
         </Button>
       </div>
 
       {type === "skills" && (
         <div className="space-y-2">
-          <Label htmlFor="skill-description">Description</Label>
+          <Label htmlFor="skill-description">{t('descriptionLabel')}</Label>
           <Input
             id="skill-description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Brief description of what this skill does"
+            placeholder={t('descriptionPlaceholder')}
           />
           <p className="text-xs text-muted-foreground">
-            Required. Helps the agent decide when to use this skill.
+            {t('descriptionHint')}
           </p>
         </div>
       )}

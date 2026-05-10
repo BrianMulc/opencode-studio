@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { Editor } from "@monaco-editor/react";
 import { toast } from "sonner";
 import type { AgentConfig, AgentInfo, PermissionConfig } from "@/types";
 import { getAgents, saveAgent, deleteAgent, toggleAgent } from "@/lib/api";
+import { useErrorTranslation } from "@/lib/error-translate";
 import { AgentCard } from "@/components/agent-card";
 import { PermissionEditor } from "@/components/permission-editor";
 import { PageHelp } from "@/components/page-help";
@@ -17,6 +19,16 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Plus, ChevronDown, Sliders as Settings } from "@nsmr/pixelart-react";
 
@@ -70,6 +82,8 @@ const emptyForm = (): AgentFormState => ({
 });
 
 export default function AgentsPage() {
+  const t = useTranslations('agents');
+  const translateError = useErrorTranslation();
   const { theme } = useTheme();
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,6 +92,8 @@ export default function AgentsPage() {
   const [permissionsModalOpen, setPermissionsModalOpen] = useState(false);
   const [form, setForm] = useState<AgentFormState>(emptyForm());
   const [helpOpen, setHelpOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<AgentInfo | null>(null);
 
   const filteredAgents = useMemo(() => agents, [agents]);
 
@@ -87,8 +103,7 @@ export default function AgentsPage() {
       const data = await getAgents();
       setAgents(data);
     } catch (err: any) {
-      const msg = err?.response?.data?.error || err?.message || "Failed to load agents";
-      toast.error(msg);
+      toast.error(translateError(err, t('loadFailed')));
     } finally {
       setLoading(false);
     }
@@ -127,7 +142,7 @@ export default function AgentsPage() {
 
   const handleSave = async () => {
     if (!form.name.trim()) {
-      toast.error("Name is required");
+      toast.error(t('nameRequired'));
       return;
     }
 
@@ -146,26 +161,31 @@ export default function AgentsPage() {
 
     try {
       await saveAgent(editing?.name || form.name.trim(), payload, form.source, form.scope);
-      toast.success(editing ? "Agent updated" : "Agent created");
+      toast.success(editing ? t('updated') : t('created'));
       setOpen(false);
       setEditing(null);
       loadAgents();
     } catch (err: any) {
-      const msg = err?.response?.data?.error || err?.message || "Failed to save agent";
-      toast.error(msg);
+      toast.error(translateError(err, t('saveFailed')));
     }
   };
 
   const handleDelete = async (agent: AgentInfo) => {
-    if (!confirm(`Delete agent "${agent.name}"?`)) return;
+    setDeleteTarget(agent);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
     try {
-      await deleteAgent(agent.name);
-      toast.success("Agent deleted");
+      await deleteAgent(deleteTarget.name);
+      toast.success(t('deleted'));
       loadAgents();
     } catch (err: any) {
-      const msg = err?.response?.data?.error || err?.message || "Failed to delete agent";
+      const msg = err?.response?.data?.error || err?.message || t('deleteFailed');
       toast.error(msg);
     }
+    setDeleteDialogOpen(false);
   };
 
   const handleToggle = async (agent: AgentInfo) => {
@@ -173,28 +193,27 @@ export default function AgentsPage() {
       await toggleAgent(agent.name);
       loadAgents();
     } catch (err: any) {
-      const msg = err?.response?.data?.error || err?.message || "Failed to toggle agent";
-      toast.error(msg);
+      toast.error(translateError(err, t('toggleFailed')));
     }
   };
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <PageHelp title="Agents" docUrl="https://opencode.ai/docs/agents" docTitle="Agents Documentation" />
+        <PageHelp title={t('title')} docUrl="https://opencode.ai/docs/agents" docTitle={t('docTitle')} />
         <div className="flex gap-2">
           <Button variant="outline" size="icon" onClick={() => setHelpOpen(true)} aria-label="Page help">
             ?
           </Button>
           <Button onClick={() => openEditor()}>
           <Plus className="h-4 w-4" />
-          New Agent
+          {t('newAgent')}
         </Button>
         </div>
       </div>
 
       {loading ? (
-        <div className="text-sm text-muted-foreground">Loading agents...</div>
+        <div className="text-sm text-muted-foreground">{t('loading')}</div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredAgents.map((agent) => (
@@ -213,8 +232,8 @@ export default function AgentsPage() {
         <DialogContent className="max-w-none w-screen h-screen rounded-none border-none overflow-hidden p-0">
           <div className="flex h-full flex-col">
             <DialogHeader className="border-b p-6">
-              <DialogTitle>{editing ? "Edit Agent" : "New Agent"}</DialogTitle>
-              <DialogDescription>Manage agent identity, prompt, tools, and permissions.</DialogDescription>
+              <DialogTitle>{editing ? t('editAgent') : t('newAgent')}</DialogTitle>
+              <DialogDescription>{t('dialogDescription')}</DialogDescription>
             </DialogHeader>
 
             <div className="flex-1 min-h-0 overflow-y-auto p-6">
@@ -222,25 +241,25 @@ export default function AgentsPage() {
                 <div className="space-y-6">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Name</Label>
+                  <Label>{t('nameLabel')}</Label>
                   <Input
                     value={form.name}
                     onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-                    placeholder="agent-name"
+                    placeholder={t('namePlaceholder')}
                     disabled={!!editing}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Description</Label>
+                  <Label>{t('descriptionLabel')}</Label>
                   <Textarea
                     value={form.description}
                     onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-                    placeholder="What does this agent do?"
+                    placeholder={t('descriptionPlaceholder')}
                     className="min-h-[88px] resize-none"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Mode</Label>
+                  <Label>{t('modeLabel')}</Label>
                   <Select value={form.mode || "subagent"} onValueChange={(v) => setForm((prev) => ({ ...prev, mode: v as AgentConfig["mode"] }))}>
                     <SelectTrigger className="w-full">
                       <SelectValue />
@@ -255,7 +274,7 @@ export default function AgentsPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Model Override</Label>
+                  <Label>{t('modelLabel')}</Label>
                   <Input
                     value={form.model}
                     onChange={(e) => setForm((prev) => ({ ...prev, model: e.target.value }))}
@@ -263,7 +282,7 @@ export default function AgentsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Temperature</Label>
+                  <Label>{t('temperatureLabel')}</Label>
                   <Input
                     type="number"
                     step="0.1"
@@ -274,7 +293,7 @@ export default function AgentsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Max Steps</Label>
+                  <Label>{t('maxStepsLabel')}</Label>
                   <Input
                     type="number"
                     value={form.maxSteps ?? ""}
@@ -284,26 +303,26 @@ export default function AgentsPage() {
                 {!editing && (
                   <>
                     <div className="space-y-2">
-                      <Label>Source</Label>
+                       <Label>{t('sourceLabel')}</Label>
                       <Select value={form.source} onValueChange={(v) => setForm((prev) => ({ ...prev, source: v as AgentFormState["source"] }))}>
                         <SelectTrigger className="w-full">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="markdown">Markdown</SelectItem>
-                          <SelectItem value="json">JSON</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Scope</Label>
+                           <SelectItem value="markdown">Markdown</SelectItem>
+                           <SelectItem value="json">JSON</SelectItem>
+                         </SelectContent>
+                       </Select>
+                     </div>
+                     <div className="space-y-2">
+                       <Label>{t('scopeLabel')}</Label>
                       <Select value={form.scope} onValueChange={(v) => setForm((prev) => ({ ...prev, scope: v as AgentFormState["scope"] }))}>
                         <SelectTrigger className="w-full">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="global">Global</SelectItem>
-                          <SelectItem value="project">Project</SelectItem>
+                           <SelectItem value="global">{t('global')}</SelectItem>
+                           <SelectItem value="project">{t('project')}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -313,7 +332,7 @@ export default function AgentsPage() {
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label>Tools</Label>
+                  <Label>{t('toolsLabel')}</Label>
                   <div className="flex gap-2">
                     <Button
                       variant="ghost"
@@ -321,11 +340,11 @@ export default function AgentsPage() {
                       className="h-6 text-[10px] px-2"
                       onClick={() => {
                         const all: Record<string, boolean> = {};
-                        TOOL_OPTIONS.forEach(t => all[t] = true);
+                        TOOL_OPTIONS.forEach(tool => all[tool] = true);
                         setForm(prev => ({ ...prev, tools: all }));
                       }}
                     >
-                      All
+                      {t('all')}
                     </Button>
                     <Button
                       variant="ghost"
@@ -335,7 +354,7 @@ export default function AgentsPage() {
                         setForm(prev => ({ ...prev, tools: {} }));
                       }}
                     >
-                      None
+                      {t('none')}
                     </Button>
                   </div>
                 </div>
@@ -357,18 +376,18 @@ export default function AgentsPage() {
               <div className="flex flex-wrap items-center gap-4">
                 <label className="flex items-center gap-2 text-sm">
                   <Switch checked={!!form.disable} onCheckedChange={(checked) => setForm((prev) => ({ ...prev, disable: checked }))} />
-                  Disabled
+                  {t('disabled')}
                 </label>
                 <label className="flex items-center gap-2 text-sm">
                   <Switch checked={!!form.hidden} onCheckedChange={(checked) => setForm((prev) => ({ ...prev, hidden: checked }))} />
-                  Hidden
+                  {t('hidden')}
                 </label>
               </div>
                 </div>
 
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label>System Prompt</Label>
+                    <Label>{t('systemPrompt')}</Label>
                     <Editor
                       height="40vh"
                       language="markdown"
@@ -382,9 +401,9 @@ export default function AgentsPage() {
                   <div className="space-y-4 pt-4 border-t">
                     <div className="flex items-center justify-between">
                       <div className="space-y-0.5">
-                        <Label className="text-base">Tool Permissions</Label>
+                        <Label className="text-base">{t('toolPermissions')}</Label>
                         <p className="text-xs text-muted-foreground">
-                          Fine-grained control over what tools this agent can use and where.
+                          {t('toolPermissionsDescription')}
                         </p>
                       </div>
                       <Button
@@ -393,7 +412,7 @@ export default function AgentsPage() {
                         className="gap-2"
                       >
                         <Settings className="h-4 w-4" />
-                        Configure
+                        {t('configure')}
                       </Button>
                     </div>
                   </div>
@@ -404,9 +423,9 @@ export default function AgentsPage() {
             <div className="border-t p-4">
               <DialogFooter>
                 <Button variant="outline" onClick={() => setOpen(false)}>
-                  Cancel
+                  {t('cancel')}
                 </Button>
-                <Button onClick={handleSave}>Save Agent</Button>
+                <Button onClick={handleSave}>{t('saveAgent')}</Button>
               </DialogFooter>
             </div>
           </div>
@@ -416,9 +435,9 @@ export default function AgentsPage() {
       <Dialog open={permissionsModalOpen} onOpenChange={setPermissionsModalOpen}>
         <DialogContent className="max-w-4xl h-[85vh] !flex !flex-col p-0 overflow-hidden">
           <DialogHeader className="p-6 border-b shrink-0">
-            <DialogTitle>Configure Permissions</DialogTitle>
+            <DialogTitle>{t('configurePermissions')}</DialogTitle>
             <DialogDescription>
-              Define allow/deny patterns and access levels for each tool.
+              {t('permissionsDescription')}
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 min-h-0 p-6 flex flex-col">
@@ -428,7 +447,7 @@ export default function AgentsPage() {
             />
           </div>
           <DialogFooter className="p-4 border-t bg-muted/20 shrink-0">
-            <Button onClick={() => setPermissionsModalOpen(false)}>Done</Button>
+            <Button onClick={() => setPermissionsModalOpen(false)}>{t('done')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

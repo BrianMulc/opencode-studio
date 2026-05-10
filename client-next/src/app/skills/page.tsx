@@ -1,12 +1,23 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useTranslations } from "next-intl";
 import { useApp } from "@/lib/context";
 import { SkillCard } from "@/components/skill-card";
 import { AddSkillDialog } from "@/components/add-skill-dialog";
 import { BulkImportDialog } from "@/components/bulk-import-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useRouter } from "next/navigation";
 import { deleteSkill } from "@/lib/api";
 import { toast } from "sonner";
@@ -15,9 +26,12 @@ import { PageHelp } from "@/components/page-help";
 import { PresetsManager } from "@/components/presets-manager";
 
 export default function SkillsPage() {
+  const t = useTranslations('skills');
   const { skills, loading, refreshData, toggleSkill } = useApp();
   const router = useRouter();
   const [search, setSearch] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ name: string } | null>(null);
 
   const filteredSkills = useMemo(() => {
     if (!search.trim()) return skills;
@@ -36,22 +50,28 @@ export default function SkillsPage() {
     try {
       await toggleSkill(name);
       const skill = skills.find(s => s.name === name);
-      toast.success(`${name} ${skill?.enabled ? "disabled" : "enabled"}`);
+      toast.success(skill?.enabled ? t('toggleDisabled', { name }) : t('toggleEnabled', { name }));
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || "Unknown error";
-      toast.error(`Failed to toggle skill: ${msg}`);
+      const msg = err.response?.data?.error || err.message || t('unknownError');
+      toast.error(t('toggleFailed', { error: msg }));
     }
   };
 
-  const handleDelete = async (name: string) => {
-    if (!confirm(`Delete ${name}?`)) return;
+  const handleDelete = (name: string) => {
+    setDeleteTarget({ name });
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
     try {
-      await deleteSkill(name);
-      toast.success(`${name} deleted`);
+      await deleteSkill(deleteTarget.name);
+      toast.success(t('deleted', { name: deleteTarget.name }));
+      setDeleteDialogOpen(false);
       refreshData();
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || "Unknown error";
-      toast.error(`Failed to delete skill: ${msg}`);
+      const msg = err.response?.data?.error || err.message || t('unknownError');
+      toast.error(t('deleteFailed', { error: msg }));
     }
   };
 
@@ -59,7 +79,7 @@ export default function SkillsPage() {
     return (
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-<PageHelp title="Skills" docUrl="https://opencode.ai/docs/skills" docTitle="Skills Documentation" />
+<PageHelp title={t('title')} docUrl="https://opencode.ai/docs/skills" docTitle={t('docTitleFull')} />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
@@ -73,7 +93,7 @@ export default function SkillsPage() {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <PageHelp title="Skills" docUrl="https://opencode.ai/docs" docTitle="Skills" />
+        <PageHelp title={t('title')} docUrl="https://opencode.ai/docs" docTitle={t('docTitle')} />
         <div className="flex gap-2">
           <PresetsManager />
           <BulkImportDialog 
@@ -91,16 +111,16 @@ export default function SkillsPage() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search skills..."
+            placeholder={t('searchPlaceholder')}
             className="pl-9"
           />
         </div>
       )}
 
       {skills.length === 0 ? (
-        <p className="text-muted-foreground italic">No skills found.</p>
+        <p className="text-muted-foreground italic">{t('noSkills')}</p>
       ) : filteredSkills.length === 0 ? (
-        <p className="text-muted-foreground italic">No skills match "{search}"</p>
+        <p className="text-muted-foreground italic">{t('noMatch', { search })}</p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {filteredSkills.map((skill) => (
@@ -114,6 +134,22 @@ export default function SkillsPage() {
           ))}
         </div>
       )}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('deleteTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('deleteConfirm', { name: deleteTarget?.name || '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm}>
+              {t('delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

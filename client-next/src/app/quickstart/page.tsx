@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useTranslations } from "next-intl";
 import { 
   Card, 
   CardContent, 
@@ -58,11 +59,12 @@ interface Step {
 
 function CodeBlock({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
+  const t = useTranslations('quickstart');
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(code);
     setCopied(true);
-    toast.success("Copied to clipboard");
+    toast.success(t('copiedToClipboard'));
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -124,6 +126,8 @@ export default function QuickstartPage() {
     setProviderChoices(prev => ({ ...prev, [key]: value }));
   };
 
+  const t = useTranslations('quickstart');
+
   const ohmyopencodeConfig = useMemo(() => {
     const claudePrefix = providerChoices.claude === "github-copilot" ? "github-copilot/" : "anthropic/";
     const gptPrefix = providerChoices.gpt === "github-copilot" ? "github-copilot/" : "openai/";
@@ -181,10 +185,10 @@ export default function QuickstartPage() {
     e.stopPropagation();
     if (completedSteps.includes(id)) {
       setCompletedSteps(prev => prev.filter(s => s !== id));
-      toast.info("Step marked incomplete");
+      toast.info(t('stepMarkedIncomplete'));
     } else {
       setCompletedSteps(prev => [...prev, id]);
-      toast.success("Step completed!");
+      toast.success(t('stepCompleted'));
       // Auto-open next step
       const stepIds = ["ohmyopencode", "superpowers", "starterkit"];
       const idx = stepIds.indexOf(id);
@@ -199,25 +203,25 @@ export default function QuickstartPage() {
     setCompletedSteps([]);
     setOpenSections({ ohmyopencode: true, superpowers: false, starterkit: false });
     localStorage.removeItem("opencode-quickstart-progress");
-    toast.success("Progress reset");
+    toast.success(t('progressReset'));
   };
 
   const steps: Step[] = [
     {
       id: "ohmyopencode",
-      title: "Oh My OpenCode",
-      description: "Enhanced agent framework with personas",
-      badge: "Recommended",
+      title: t('ohmyopencodeTitle'),
+      description: t('ohmyopencodeDescription'),
+      badge: t('recommended'),
       badgeVariant: "secondary",
       content: (
         <div className="space-y-4">
           <ExternalLinkButton href="https://github.com/code-yeongyu/oh-my-opencode">
-            GitHub
+            {t('github')}
           </ExternalLinkButton>
 
           <div>
             <p className="text-sm text-muted-foreground mb-1">
-              Paste this in a fresh OpenCode session:
+              {t('ohmyopencodeInstruction')}
             </p>
             <CodeBlock code="Install and configure by following the instructions here https://raw.githubusercontent.com/code-yeongyu/oh-my-opencode/refs/heads/master/README.md" />
           </div>
@@ -225,8 +229,7 @@ export default function QuickstartPage() {
           <div className="flex items-start gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-md">
             <Alert className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
             <p className="text-sm text-amber-600 dark:text-amber-400">
-              Don't edit <code className="bg-background px-1 rounded text-xs">opencode.json</code> manually. 
-              Use the configs in Step 3.
+              {t('ohmyopencodeWarningBefore')} <code className="bg-background px-1 rounded text-xs">opencode.json</code> {t('ohmyopencodeWarningAfter')}
             </p>
           </div>
         </div>
@@ -234,19 +237,19 @@ export default function QuickstartPage() {
     },
     {
       id: "superpowers",
-      title: "Superpowers",
-      description: "Advanced skills and workflows",
-      badge: "Recommended",
+      title: t('superpowersTitle'),
+      description: t('superpowersDescription'),
+      badge: t('recommended'),
       badgeVariant: "secondary",
       content: (
         <div className="space-y-4">
           <ExternalLinkButton href="https://github.com/obra/superpowers">
-            GitHub
+            {t('github')}
           </ExternalLinkButton>
 
           <div>
             <p className="text-sm text-muted-foreground mb-1">
-              Run inside OpenCode:
+              {t('superpowersInstruction')}
             </p>
             <CodeBlock code="Fetch and follow instructions from https://raw.githubusercontent.com/obra/superpowers/refs/heads/main/.opencode/INSTALL.md" />
           </div>
@@ -254,8 +257,7 @@ export default function QuickstartPage() {
           <div className="flex items-start gap-2 p-3 bg-blue-500/10 border border-blue-500/20 rounded-md">
             <Alert className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
             <p className="text-sm text-blue-600 dark:text-blue-400">
-              If you see <code className="bg-muted px-1 rounded text-xs">Module not found: lib/skills-core.js</code>,
-              the starter configs in Step 3 should fix it.
+              {t('superpowersWarningBefore')} <code className="bg-muted px-1 rounded text-xs">Module not found: lib/skills-core.js</code>{t('superpowersWarningAfter')}
             </p>
           </div>
         </div>
@@ -263,32 +265,32 @@ export default function QuickstartPage() {
     },
     {
       id: "starterkit",
-      title: "Apply MoonStarter Configs",
-      description: "Copy safe pre-configured files",
-      badge: "Critical",
+      title: t('starterkitTitle'),
+      description: t('starterkitDescription'),
+      badge: t('critical'),
       badgeVariant: "destructive",
       content: (
         <div className="space-y-4">
           <div>
-            <p className="text-sm font-medium mb-2">1. Find your config folder:</p>
+            <p className="text-sm font-medium mb-2">{t('starterkitStep1')}</p>
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-sm">
-                <Badge variant="outline" className="text-xs">Windows</Badge>
+                <Badge variant="outline" className="text-xs">{t('windows')}</Badge>
                 <code className="bg-muted px-2 py-0.5 rounded text-xs">C:\Users\YOU\.config\opencode\</code>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <Badge variant="outline" className="text-xs">Mac/Linux</Badge>
+                <Badge variant="outline" className="text-xs">{t('macLinux')}</Badge>
                 <code className="bg-muted px-2 py-0.5 rounded text-xs">~/.config/opencode/</code>
               </div>
             </div>
           </div>
 
           <div>
-            <p className="text-sm font-medium mb-2">2. Back up existing files</p>
+            <p className="text-sm font-medium mb-2">{t('starterkitStep2')}</p>
           </div>
 
           <div>
-            <p className="text-sm font-medium mb-2">3. Create these files:</p>
+            <p className="text-sm font-medium mb-2">{t('starterkitStep3')}</p>
             
             <div className="space-y-3">
               <div>
@@ -306,57 +308,57 @@ export default function QuickstartPage() {
                 </div>
                 
                 <div className="space-y-3 mb-3 p-3 bg-background rounded-md border">
-                  <p className="text-xs font-medium">Choose provider per model family:</p>
+                  <p className="text-xs font-medium">{t('chooseProvider')}</p>
                   
                   <div className="grid grid-cols-2 gap-2">
                     <div className="space-y-1">
-                      <Label className="text-xs">Claude (Anthropic)</Label>
+                      <Label className="text-xs">{t('claudeLabel')}</Label>
                       <Select value={providerChoices.claude} onValueChange={(v) => setProvider("claude", v as Provider)}>
                         <SelectTrigger className="h-7 text-xs">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="github-copilot">GitHub Copilot</SelectItem>
+                          <SelectItem value="github-copilot">{t('githubCopilot')}</SelectItem>
                           <SelectItem value="anthropic">Anthropic</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     
                     <div className="space-y-1">
-                      <Label className="text-xs">GPT (OpenAI)</Label>
+                      <Label className="text-xs">{t('gptLabel')}</Label>
                       <Select value={providerChoices.gpt} onValueChange={(v) => setProvider("gpt", v as Provider)}>
                         <SelectTrigger className="h-7 text-xs">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="github-copilot">GitHub Copilot</SelectItem>
+                          <SelectItem value="github-copilot">{t('githubCopilot')}</SelectItem>
                           <SelectItem value="openai">OpenAI</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     
                     <div className="space-y-1">
-                      <Label className="text-xs">Gemini (Google)</Label>
+                      <Label className="text-xs">{t('geminiLabel')}</Label>
                       <Select value={providerChoices.gemini} onValueChange={(v) => setProvider("gemini", v as Provider)}>
                         <SelectTrigger className="h-7 text-xs">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="github-copilot">GitHub Copilot</SelectItem>
+                          <SelectItem value="github-copilot">{t('githubCopilot')}</SelectItem>
                           <SelectItem value="google">Google</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     
                     <div className="space-y-1">
-                      <Label className="text-xs">Grok (xAI)</Label>
+                      <Label className="text-xs">{t('grokLabel')}</Label>
                       <Select value={providerChoices.grok} onValueChange={(v) => setProvider("grok", v as Provider)}>
                         <SelectTrigger className="h-7 text-xs">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="github-copilot">GitHub Copilot</SelectItem>
-                          <SelectItem value="opencode">OpenCode (free)</SelectItem>
+                          <SelectItem value="github-copilot">{t('githubCopilot')}</SelectItem>
+                          <SelectItem value="opencode">{t('opencodeFree')}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -369,7 +371,7 @@ export default function QuickstartPage() {
                   <div className="flex items-start gap-2 p-2 bg-amber-500/10 border border-amber-500/20 rounded-md mt-2">
                     <Alert className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
                     <p className="text-xs text-amber-600 dark:text-amber-400">
-                      Direct providers require authentication. Run <code className="bg-background px-1 rounded">opencode auth login</code> and select your provider.
+                      {t('directProviderWarningBefore')} <code className="bg-background px-1 rounded">opencode auth login</code> {t('directProviderWarningAfter')}
                     </p>
                   </div>
                 )}
@@ -378,7 +380,7 @@ export default function QuickstartPage() {
           </div>
 
           <div>
-            <p className="text-sm font-medium">4. Restart OpenCode</p>
+            <p className="text-sm font-medium">{t('starterkitStep4')}</p>
           </div>
         </div>
       ),
@@ -388,7 +390,7 @@ export default function QuickstartPage() {
   const progressPercentage = Math.round((completedSteps.length / steps.length) * 100);
 
   if (!mounted) {
-    return <div className="p-8 text-center text-muted-foreground">Loading...</div>;
+    return <div className="p-8 text-center text-muted-foreground">{t('loading')}</div>;
   }
 
   return (
@@ -399,14 +401,14 @@ export default function QuickstartPage() {
         
         <div className="relative space-y-3">
           <div className="flex items-center justify-between">
-            <PageHelp title="Quickstart" docUrl="https://opencode.ai/docs" docTitle="Quickstart" />
+            <PageHelp title={t('pageTitle')} docUrl="https://opencode.ai/docs" docTitle={t('pageTitle')} />
             <Button variant="ghost" size="sm" onClick={resetProgress} className="text-muted-foreground">
               <Undo className="h-4 w-4 mr-1" />
-              Reset
+              {t('reset')}
             </Button>
           </div>
           <p className="text-muted-foreground">
-            Set up OpenCode with enhanced agents and skills.
+            {t('description')}
           </p>
           
           {/* Progress */}
@@ -447,7 +449,7 @@ export default function QuickstartPage() {
                             ? "bg-primary text-primary-foreground hover:bg-primary/80" 
                             : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
                         )}
-                        title={isCompleted ? "Mark incomplete" : "Mark complete"}
+                        title={isCompleted ? t('markIncompleteTitle') : t('markCompleteTitle')}
                       >
                         {isCompleted ? (
                           <Check className="h-4 w-4" />
@@ -494,12 +496,12 @@ export default function QuickstartPage() {
                       {isCompleted ? (
                         <>
                           <Circle className="h-4 w-4 mr-2" />
-                          Mark Incomplete
+                          {t('markIncomplete')}
                         </>
                       ) : (
                         <>
                           <CheckDouble className="h-4 w-4 mr-2" />
-                          Mark Complete
+                          {t('markComplete')}
                         </>
                       )}
                     </Button>
@@ -516,7 +518,7 @@ export default function QuickstartPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <Zap className="h-4 w-4 text-yellow-500" />
-            What You Get
+            {t('whatYouGet')}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -524,29 +526,29 @@ export default function QuickstartPage() {
             <div className="flex items-start gap-2">
               <Server className="h-4 w-4 text-primary mt-0.5" />
               <div>
-                <p className="text-sm font-medium">Stability Fixes</p>
-                <p className="text-xs text-muted-foreground">Windows crash & module errors solved</p>
+                <p className="text-sm font-medium">{t('stabilityFixes')}</p>
+                <p className="text-xs text-muted-foreground">{t('stabilityFixesDesc')}</p>
               </div>
             </div>
             <div className="flex items-start gap-2">
               <AddBox className="h-4 w-4 text-primary mt-0.5" />
               <div>
-                <p className="text-sm font-medium">MCP Tools</p>
-                <p className="text-xs text-muted-foreground">Shadcn, Supabase, web search</p>
+                <p className="text-sm font-medium">{t('mcpTools')}</p>
+                <p className="text-xs text-muted-foreground">{t('mcpToolsDesc')}</p>
               </div>
             </div>
             <div className="flex items-start gap-2">
               <MoonStars className="h-4 w-4 text-primary mt-0.5" />
               <div>
-                <p className="text-sm font-medium">Specialized Agents</p>
-                <p className="text-xs text-muted-foreground">Oracle, Sisyphus, Librarian & more</p>
+                <p className="text-sm font-medium">{t('specializedAgents')}</p>
+                <p className="text-xs text-muted-foreground">{t('specializedAgentsDesc')}</p>
               </div>
             </div>
             <div className="flex items-start gap-2">
               <Zap className="h-4 w-4 text-primary mt-0.5" />
               <div>
-                <p className="text-sm font-medium">Superpowers Skills</p>
-                <p className="text-xs text-muted-foreground">TDD, debugging, planning workflows</p>
+                <p className="text-sm font-medium">{t('superpowersSkills')}</p>
+                <p className="text-xs text-muted-foreground">{t('superpowersSkillsDesc')}</p>
               </div>
             </div>
           </div>

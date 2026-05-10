@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { Editor } from "@monaco-editor/react";
 import { toast } from "sonner";
@@ -16,19 +17,20 @@ import { Plus, Save } from "@nsmr/pixelart-react";
 const templates = [
   {
     id: "nextjs",
-    name: "React / Next.js",
-    description: "App Router, TypeScript, Tailwind conventions",
+    nameKey: "templateNextjsName",
+    descKey: "templateNextjsDesc",
     content: `# Project Rules (Next.js)\n\n## Stack\n- Next.js App Router\n- React with TypeScript\n- Tailwind v4\n\n## Conventions\n- Client components for interactivity\n- API calls via @/lib/api\n- Use shadcn/ui components from @/components/ui\n- Keep components small and focused\n\n## Code Style\n- Prefer const/let over var\n- Avoid any/ts-ignore\n- Use cn() for class merging\n`,
   },
   {
     id: "python",
-    name: "Python Script",
-    description: "Script structure and linting basics",
+    nameKey: "templatePythonName",
+    descKey: "templatePythonDesc",
     content: `# Python Script Rules\n\n## Stack\n- Python 3.11+\n- Type hints required\n\n## Conventions\n- Keep functions small\n- Use pathlib for paths\n- Add docstrings\n\n## Tooling\n- ruff for linting\n- black or ruff format\n`,
   },
 ];
 
 export default function RulesPage() {
+  const t = useTranslations('rules');
   const { theme } = useTheme();
   const [content, setContent] = useState("");
   const [source, setSource] = useState<RulesResponse["source"]>("none");
@@ -42,7 +44,7 @@ export default function RulesPage() {
       setSource(data.source || "none");
       setPath(data.path || null);
     } catch (err: any) {
-      toast.error(err?.message || "Failed to load rules");
+      toast.error(err?.message || t('loadFailed'));
     }
   };
 
@@ -55,11 +57,11 @@ export default function RulesPage() {
     try {
       setSaving(true);
       await saveProjectRules(content, target);
-      toast.success("Rules saved");
+      toast.success(t('saved'));
       setSource(target);
       loadRules();
     } catch (err: any) {
-      toast.error(err?.message || "Failed to save rules");
+      toast.error(err?.message || t('saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -69,9 +71,9 @@ export default function RulesPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="space-y-1">
-          <PageHelp title="Project Rules" docUrl="https://opencode.ai/docs" docTitle="Project Rules (AGENTS.md) Editor" />
+          <PageHelp title={t('title')} docUrl="https://opencode.ai/docs" docTitle={t('docTitle')} />
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <Badge variant="outline">{source === "none" ? "Not Found" : source}</Badge>
+            <Badge variant="outline">{source === "none" ? t('notFound') : source}</Badge>
             {path && <span className="font-mono">{path}</span>}
           </div>
         </div>
@@ -87,7 +89,7 @@ export default function RulesPage() {
           </Select>
           <Button onClick={handleSave} disabled={saving}>
             <Save className="h-4 w-4" />
-            Save
+            {t('save')}
           </Button>
         </div>
       </div>
@@ -95,13 +97,13 @@ export default function RulesPage() {
       <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
         <Card className="h-fit">
           <CardHeader>
-            <CardTitle className="text-base">Templates</CardTitle>
+            <CardTitle className="text-base">{t('templates')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {templates.map((tpl) => (
               <div key={tpl.id} className="rounded-md border border-border/70 p-3">
-                <div className="text-sm font-medium">{tpl.name}</div>
-                <div className="text-xs text-muted-foreground">{tpl.description}</div>
+                <div className="text-sm font-medium">{t(tpl.nameKey)}</div>
+                <div className="text-xs text-muted-foreground">{t(tpl.descKey)}</div>
                 <Button
                   className="mt-2"
                   size="sm"
@@ -109,7 +111,7 @@ export default function RulesPage() {
                   onClick={() => setContent(tpl.content)}
                 >
                   <Plus className="h-4 w-4" />
-                  Insert
+                  {t('insert')}
                 </Button>
               </div>
             ))}

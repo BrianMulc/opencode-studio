@@ -23,6 +23,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Plus, Alert as AlertIcon, Link, Loader } from "@nsmr/pixelart-react";
 import { savePlugin, fetchUrl, addPluginsToConfig } from "@/lib/api";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 
 function tryParsePluginConfig(text: string): string[] | null {
   try {
@@ -313,6 +314,7 @@ function extractNameAndTypeFromUrl(url: string): { name: string; type: "js" | "t
 }
 
 export function AddPluginDialog({ onSuccess }: AddPluginDialogProps) {
+  const t = useTranslations('dialogs');
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [fileType, setFileType] = useState<"js" | "ts">("ts");
@@ -350,17 +352,17 @@ export function AddPluginDialog({ onSuccess }: AddPluginDialogProps) {
       const result = await addPluginsToConfig(plugins);
       
       if (result.added.length > 0) {
-        toast.success(`Added ${result.added.length} plugin(s) to config`);
+        toast.success(t('addPlugin.addedToast', { count: result.added.length }));
       }
       if (result.skipped.length > 0) {
-        toast.info(`Skipped ${result.skipped.length} already existing`);
+        toast.info(t('addPlugin.skippedToast', { count: result.skipped.length }));
       }
       
       resetForm();
       setOpen(false);
       onSuccess();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add plugins to config");
+      setError(err instanceof Error ? err.message : t('addPlugin.errors.addToConfigFailed'));
     } finally {
       setConfigImporting(false);
     }
@@ -381,7 +383,7 @@ export function AddPluginDialog({ onSuccess }: AddPluginDialogProps) {
     }
     
     if (!isUrl(urlInput)) {
-      setError("Enter a URL, npm package name, or JSON config");
+      setError(t('addPlugin.errors.invalidInput'));
       return;
     }
 
@@ -401,10 +403,10 @@ export function AddPluginDialog({ onSuccess }: AddPluginDialogProps) {
         }
       }
       
-      toast.success("Fetched content from URL");
+      toast.success(t('fetchedToast'));
       setUrlInput("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch URL");
+      setError(err instanceof Error ? err.message : t('fetchFailed'));
     } finally {
       setFetching(false);
     }
@@ -445,11 +447,11 @@ export function AddPluginDialog({ onSuccess }: AddPluginDialogProps) {
           }
         }
         
-        toast.success("Fetched content from URL");
+        toast.success(t('fetchedToast'));
         setUrlInput("");
       } catch (err) {
         setUrlInput(pastedText);
-        setError(err instanceof Error ? err.message : "Failed to fetch URL");
+        setError(err instanceof Error ? err.message : t('fetchFailed'));
       } finally {
         setFetching(false);
       }
@@ -461,7 +463,7 @@ export function AddPluginDialog({ onSuccess }: AddPluginDialogProps) {
     setError("");
 
     if (!name.trim()) {
-      setError("Please enter a plugin name");
+      setError(t('addPlugin.errors.nameRequired'));
       return;
     }
 
@@ -469,36 +471,38 @@ export function AddPluginDialog({ onSuccess }: AddPluginDialogProps) {
     const fileName = name.endsWith(ext) ? name : `${name}${ext}`;
 
     if (!/^[a-zA-Z0-9_-]+\.(js|ts)$/.test(fileName)) {
-      setError("Name can only contain letters, numbers, hyphens, and underscores");
+      setError(t('addPlugin.errors.nameFormat'));
       return;
     }
 
     try {
       setLoading(true);
       await savePlugin(fileName, content);
-      toast.success(`Created ${fileName}`);
+      toast.success(t('addPlugin.createdToast', { name: fileName }));
       resetForm();
       setOpen(false);
       onSuccess();
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || "Failed to create plugin";
+      const msg = err.response?.data?.error || err.message || t('addPlugin.errors.createFailed');
       setError(msg);
     } finally {
       setLoading(false);
     }
   };
 
+  const computedFileName = name ? (name.endsWith(`.${fileType}`) ? name : `${name}.${fileType}`) : `plugin-name.${fileType}`;
+
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) resetForm(); }}>
       <DialogTrigger asChild>
         <Button size="sm">
           <Plus className="h-4 w-4 mr-2" />
-          New Plugin
+          {t('addPlugin.trigger')}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create New Plugin</DialogTitle>
+          <DialogTitle>{t('addPlugin.title')}</DialogTitle>
         </DialogHeader>
 
         {error && (
@@ -512,14 +516,14 @@ export function AddPluginDialog({ onSuccess }: AddPluginDialogProps) {
           <div className="space-y-2 p-3 rounded-lg border border-dashed">
             <Label className="flex items-center gap-2">
               <Link className="h-4 w-4" />
-              Import from URL
+              {t('importLabel')}
             </Label>
             <div className="flex gap-2">
               <Input
                 value={urlInput}
                 onChange={(e) => setUrlInput(e.target.value)}
                 onPaste={handlePaste}
-                placeholder="Paste URL to a .js or .ts file..."
+                placeholder={t('addPlugin.importPlaceholder')}
                 className="flex-1"
               />
               <Button 
@@ -528,64 +532,64 @@ export function AddPluginDialog({ onSuccess }: AddPluginDialogProps) {
                 onClick={handleFetchUrl}
                 disabled={fetching || !urlInput.trim()}
               >
-                {fetching ? <Loader className="h-4 w-4 animate-spin" /> : "Fetch"}
+                {fetching ? <Loader className="h-4 w-4 animate-spin" /> : t('fetch')}
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Paste a URL to automatically fetch plugin content (e.g., raw GitHub URL)
+              {t('addPlugin.importHint')}
             </p>
           </div>
 
           <div className="flex gap-4">
             <div className="flex-1 space-y-2">
-              <Label htmlFor="plugin-name">Plugin Name</Label>
+              <Label htmlFor="plugin-name">{t('addPlugin.nameLabel')}</Label>
               <Input
                 id="plugin-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="my-plugin"
+                placeholder={t('addPlugin.namePlaceholder')}
               />
             </div>
             <div className="w-32 space-y-2">
-              <Label>Type</Label>
+              <Label>{t('addPlugin.typeLabel')}</Label>
               <Select value={fileType} onValueChange={(v) => handleTypeChange(v as "js" | "ts")}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ts">TypeScript</SelectItem>
-                  <SelectItem value="js">JavaScript</SelectItem>
+                  <SelectItem value="ts">{t('addPlugin.typeScript')}</SelectItem>
+                  <SelectItem value="js">{t('addPlugin.javaScript')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            Will be saved as {name ? (name.endsWith(`.${fileType}`) ? name : `${name}.${fileType}`) : `plugin-name.${fileType}`}
+            {t('addPlugin.saveAsHint', { fileName: computedFileName })}
           </p>
 
           <div className="space-y-2">
-            <Label>Template</Label>
+            <Label>{t('addPlugin.templateLabel')}</Label>
             <Select value={template} onValueChange={(v) => handleTemplateChange(v as TemplateLock)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(PLUGIN_TEMPLATES).map(([key, tmpl]) => (
+                {Object.entries(PLUGIN_TEMPLATES).map(([key]) => (
                   <SelectItem key={key} value={key}>
                     <div className="flex flex-col items-start">
-                      <span>{tmpl.name}</span>
+                      <span>{t(`addPlugin.templates.${key}.name`)}</span>
                     </div>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              {PLUGIN_TEMPLATES[template].description}
+              {t(`addPlugin.templates.${template}.description`)}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="plugin-content">Content</Label>
+            <Label htmlFor="plugin-content">{t('addPlugin.contentLabel')}</Label>
             <Textarea
               id="plugin-content"
               value={content}
@@ -596,10 +600,10 @@ export function AddPluginDialog({ onSuccess }: AddPluginDialogProps) {
 
           <div className="flex justify-end gap-2 pt-4">
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
-              Cancel
+              {t('cancel')}
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? "Creating..." : "Create Plugin"}
+              {loading ? t('addPlugin.creating') : t('addPlugin.createPlugin')}
             </Button>
           </div>
         </form>

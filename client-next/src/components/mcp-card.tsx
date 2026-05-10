@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,7 @@ interface MCPCardProps {
 }
 
 export function MCPCard({ name, config, onToggle, onDelete, onEdit }: MCPCardProps) {
+  const t = useTranslations("mcp");
   const [editOpen, setEditOpen] = useState(false);
   const [configJson, setConfigJson] = useState("");
   const [error, setError] = useState("");
@@ -49,11 +51,11 @@ export function MCPCard({ name, config, onToggle, onDelete, onEdit }: MCPCardPro
     try {
       newConfig = JSON.parse(configJson);
       if (typeof newConfig !== "object" || Array.isArray(newConfig)) {
-        setError("Config must be a JSON object");
+        setError(t("configMustBeObject"));
         return;
       }
     } catch {
-      setError("Invalid JSON");
+      setError(t("invalidJson"));
       return;
     }
 
@@ -62,7 +64,7 @@ export function MCPCard({ name, config, onToggle, onDelete, onEdit }: MCPCardPro
       await onEdit(newConfig);
       setEditOpen(false);
     } catch {
-      setError("Failed to save");
+      setError(t("failedToSave"));
     } finally {
       setLoading(false);
     }
@@ -120,7 +122,7 @@ export function MCPCard({ name, config, onToggle, onDelete, onEdit }: MCPCardPro
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit {name}</DialogTitle>
+            <DialogTitle>{t("editTitle", { name })}</DialogTitle>
           </DialogHeader>
 
           {error && (
@@ -132,7 +134,7 @@ export function MCPCard({ name, config, onToggle, onDelete, onEdit }: MCPCardPro
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="editConfigJson">Config (JSON)</Label>
+              <Label htmlFor="editConfigJson">{t("configJson")}</Label>
               <Textarea
                 id="editConfigJson"
                 value={configJson}
@@ -143,10 +145,10 @@ export function MCPCard({ name, config, onToggle, onDelete, onEdit }: MCPCardPro
 
             <div className="flex justify-end gap-2 pt-4">
               <Button type="button" variant="ghost" onClick={() => setEditOpen(false)}>
-                Cancel
+                {t("cancel")}
               </Button>
               <Button onClick={handleSaveEdit} disabled={loading}>
-                {loading ? "Saving..." : "Save"}
+                {loading ? t("saving") : t("save")}
               </Button>
             </div>
           </div>

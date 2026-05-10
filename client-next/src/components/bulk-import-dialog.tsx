@@ -21,6 +21,7 @@ import {
 } from "@nsmr/pixelart-react";
 import { bulkFetchUrls, saveSkill, savePlugin, type BulkFetchResult } from "@/lib/api";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 
 interface BulkImportDialogProps {
   type: "skills" | "plugins";
@@ -55,12 +56,15 @@ function extractNameFromUrl(url: string, type: "skills" | "plugins"): string {
 }
 
 export function BulkImportDialog({ type, existingNames, onSuccess }: BulkImportDialogProps) {
+  const t = useTranslations('dialogs');
   const [open, setOpen] = useState(false);
   const [urlInput, setUrlInput] = useState("");
   const [items, setItems] = useState<FetchItem[]>([]);
   const [phase, setPhase] = useState<"input" | "fetching" | "preview" | "importing">("input");
   const [error, setError] = useState("");
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
+
+  const typeLabel = type === "skills" ? t('bulkImport.typeSkills') : t('bulkImport.typePlugins');
 
   const resetForm = useCallback(() => {
     setUrlInput("");
@@ -88,12 +92,12 @@ export function BulkImportDialog({ type, existingNames, onSuccess }: BulkImportD
   const handleFetch = async () => {
     const urls = parseUrls(urlInput);
     if (urls.length === 0) {
-      setError("No valid URLs found. Enter one URL per line.");
+      setError(t('bulkImport.errors.noValidUrls'));
       return;
     }
 
     if (urls.length > 50) {
-      setError("Maximum 50 URLs allowed per import.");
+      setError(t('bulkImport.errors.maxUrls'));
       return;
     }
 
@@ -131,7 +135,7 @@ export function BulkImportDialog({ type, existingNames, onSuccess }: BulkImportD
       setItems(updatedItems);
       setPhase("preview");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch URLs");
+      setError(err instanceof Error ? err.message : t('bulkImport.errors.fetchFailed'));
       setPhase("input");
     }
   };
@@ -155,7 +159,7 @@ export function BulkImportDialog({ type, existingNames, onSuccess }: BulkImportD
   const handleImport = async () => {
     const toImport = items.filter((item) => item.selected && item.status === "success");
     if (toImport.length === 0) {
-      setError("No items selected for import.");
+      setError(t('bulkImport.errors.noItemsSelected'));
       return;
     }
 
@@ -192,11 +196,11 @@ export function BulkImportDialog({ type, existingNames, onSuccess }: BulkImportD
     }
 
     if (successCount > 0) {
-      toast.success(`Imported ${successCount}/${toImport.length} ${type}`);
+      toast.success(t('bulkImport.importedToast', { success: successCount, total: toImport.length, type: typeLabel }));
       onSuccess();
     }
     if (failCount > 0) {
-      toast.error(`Failed to import ${failCount} ${type}`);
+      toast.error(t('bulkImport.importFailedToast', { count: failCount, type: typeLabel }));
     }
 
     resetForm();
@@ -211,13 +215,13 @@ export function BulkImportDialog({ type, existingNames, onSuccess }: BulkImportD
       <DialogTrigger asChild>
         <Button size="sm" variant="outline">
           <Download className="h-4 w-4 mr-2" />
-          Bulk Import
+          {t('bulkImport.trigger')}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>
-            Bulk Import {type === "skills" ? "Skills" : "Plugins"}
+            {type === "skills" ? t('bulkImport.titleSkills') : t('bulkImport.titlePlugins')}
           </DialogTitle>
         </DialogHeader>
 
@@ -233,18 +237,18 @@ export function BulkImportDialog({ type, existingNames, onSuccess }: BulkImportD
             <Textarea
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
-              placeholder={`Paste URLs here (one per line)\n\nExample:\nhttps://raw.githubusercontent.com/.../SKILL.md\nhttps://raw.githubusercontent.com/.../another/SKILL.md`}
+              placeholder={t('bulkImport.placeholder')}
               className="font-mono text-sm min-h-[200px]"
             />
             <p className="text-xs text-muted-foreground">
-              Paste raw URLs to {type === "skills" ? "SKILL.md" : "plugin"} files. One URL per line.
+              {type === "skills" ? t('bulkImport.hintSkills') : t('bulkImport.hintPlugins')}
             </p>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setOpen(false)}>
-                Cancel
+                {t('cancel')}
               </Button>
               <Button onClick={handleFetch} disabled={!urlInput.trim()}>
-                Fetch URLs
+                {t('bulkImport.fetchUrls')}
               </Button>
             </div>
           </div>
@@ -254,7 +258,7 @@ export function BulkImportDialog({ type, existingNames, onSuccess }: BulkImportD
           <div className="space-y-4 py-8">
             <div className="flex items-center justify-center gap-3">
               <Loader className="h-6 w-6 animate-spin" />
-              <span>Fetching {items.length} URLs...</span>
+              <span>{t('bulkImport.fetching', { count: items.length })}</span>
             </div>
           </div>
         )}
@@ -263,14 +267,14 @@ export function BulkImportDialog({ type, existingNames, onSuccess }: BulkImportD
           <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">
-                {successItems.length} fetched successfully, {selectedCount} selected
+                {t('bulkImport.previewStatus', { fetched: successItems.length, selected: selectedCount })}
               </span>
               <div className="flex gap-2">
                 <Button size="sm" variant="ghost" onClick={() => handleToggleAll(true)}>
-                  Select All
+                  {t('bulkImport.selectAll')}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => handleToggleAll(false)}>
-                  Deselect All
+                  {t('bulkImport.deselectAll')}
                 </Button>
               </div>
             </div>
@@ -280,8 +284,8 @@ export function BulkImportDialog({ type, existingNames, onSuccess }: BulkImportD
                 <thead className="sticky top-0 bg-background border-b">
                   <tr>
                     <th className="w-8 p-2"></th>
-                    <th className="text-left p-2">Name</th>
-                    <th className="text-left p-2">Status</th>
+                    <th className="text-left p-2">{t('bulkImport.nameColumn')}</th>
+                    <th className="text-left p-2">{t('bulkImport.statusColumn')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -317,12 +321,12 @@ export function BulkImportDialog({ type, existingNames, onSuccess }: BulkImportD
                       <td className="p-2">
                         {item.status === "success" && !item.isExisting && (
                           <span className="flex items-center gap-1 text-green-600">
-                            <Check className="h-4 w-4" /> Ready
+                            <Check className="h-4 w-4" /> {t('bulkImport.statusReady')}
                           </span>
                         )}
                         {item.status === "success" && item.isExisting && (
                           <span className="flex items-center gap-1 text-yellow-600">
-                            <WarningBox className="h-4 w-4" /> Exists
+                            <WarningBox className="h-4 w-4" /> {t('bulkImport.statusExists')}
                           </span>
                         )}
                         {item.status === "error" && (
@@ -339,10 +343,10 @@ export function BulkImportDialog({ type, existingNames, onSuccess }: BulkImportD
 
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="ghost" onClick={() => { resetForm(); }}>
-                Back
+                {t('cancel')}
               </Button>
               <Button onClick={handleImport} disabled={selectedCount === 0}>
-                Import {selectedCount} {type}
+                {t('bulkImport.importButton', { count: selectedCount, type: typeLabel })}
               </Button>
             </div>
           </div>
@@ -353,7 +357,7 @@ export function BulkImportDialog({ type, existingNames, onSuccess }: BulkImportD
             <div className="flex flex-col items-center justify-center gap-3">
               <Loader className="h-6 w-6 animate-spin" />
               <span>
-                Importing {importProgress.current}/{importProgress.total}...
+                {t('bulkImport.importing', { current: importProgress.current, total: importProgress.total })}
               </span>
             </div>
           </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Clock } from "@nsmr/pixelart-react";
@@ -22,12 +23,12 @@ function getProgressColor(percentage: number): string {
   return "[&>div]:bg-red-500";
 }
 
-function formatResetTime(resetAt: string): string {
+function formatResetTime(resetAt: string, resettingText: string = "Resetting..."): string {
   const reset = new Date(resetAt);
   const now = new Date();
   const diff = reset.getTime() - now.getTime();
-  
-  if (diff <= 0) return "Resetting...";
+
+  if (diff <= 0) return resettingText;
   
   const hours = Math.floor(diff / 3600000);
   const mins = Math.floor((diff % 3600000) / 60000);
@@ -37,6 +38,8 @@ function formatResetTime(resetAt: string): string {
 }
 
 export function QuotaBar({ quota, compact = false }: QuotaBarProps) {
+  const t = useTranslations("common");
+
   if (compact) {
     return (
       <div className="flex items-center gap-2">
@@ -55,14 +58,14 @@ export function QuotaBar({ quota, compact = false }: QuotaBarProps) {
     <div className="p-3 rounded-lg bg-muted/30 space-y-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">Daily Quota</span>
+          <span className="text-sm font-medium">{t("quota.dailyQuota")}</span>
           <Badge variant="outline" className={getQuotaColor(quota.percentage)}>
             {quota.percentage}%
           </Badge>
         </div>
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           <Clock className="h-3 w-3" />
-          <span>Resets in {formatResetTime(quota.resetAt)}</span>
+          <span>{t("quota.resetsIn", { time: formatResetTime(quota.resetAt, t("quota.resetting")) })}</span>
         </div>
       </div>
       
@@ -72,8 +75,8 @@ export function QuotaBar({ quota, compact = false }: QuotaBarProps) {
       />
       
       <div className="flex justify-between text-xs text-muted-foreground">
-        <span>{quota.used.toLocaleString()} used</span>
-        <span>{quota.remaining.toLocaleString()} remaining</span>
+        <span>{t("quota.used", { count: quota.used.toLocaleString() })}</span>
+        <span>{t("quota.remaining", { count: quota.remaining.toLocaleString() })}</span>
       </div>
     </div>
   );

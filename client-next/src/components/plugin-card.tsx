@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ interface PluginCardProps {
 }
 
 export function PluginCard({ plugin, onToggle, onDelete, onClick, locked }: PluginCardProps) {
+  const t = useTranslations("plugins");
   const isNpm = plugin.type === 'npm';
   const Icon = isNpm ? AddBox : CreditCardSettings;
   const isIncompatible = plugin.name.includes('opencode-skills');
@@ -59,7 +61,7 @@ export function PluginCard({ plugin, onToggle, onDelete, onClick, locked }: Plug
         {isIncompatible && (
           <div className="mt-2 text-[10px] text-destructive flex items-center gap-1 font-medium bg-destructive/10 p-1 rounded">
             <AlertIcon className="h-3 w-3" />
-            Incompatible with Antigravity. Use openskills instead.
+            {t("incompatibleWarning")}
           </div>
         )}
       </CardContent>

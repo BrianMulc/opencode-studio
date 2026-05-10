@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useTranslations } from "next-intl";
 import { useApp } from "@/lib/context";
 import api, { getPaths, setConfigPath, getBackup, restoreBackup, getGitHubBackupStatus, backupToGitHub, restoreFromGitHub, setGitHubAutoSync, type PathsInfo, type BackupData } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,7 @@ const ESSENTIAL_KEYBINDS = [
 ] as const;
 
 export default function SettingsPage() {
+  const t = useTranslations('settings');
   const { config, loading, saveConfig, refreshData } = useApp();
   const [pathsInfoBox, setPathsInfo] = useState<PathsInfo | null>(null);
   const [manualPath, setManualPath] = useState("");
@@ -110,9 +112,9 @@ const [systemPrompt, setSystemPrompt] = useState("");
     try {
       setSavingPrompt(true);
       await api.post('/prompts/global', { content: systemPrompt });
-      toast.success("System prompt updated");
+      toast.success(t('toast.systemPromptUpdated'));
     } catch (error) {
-      toast.error("Failed to save system prompt");
+      toast.error(t('toast.failedToSavePrompt'));
     } finally {
       setSavingPrompt(false);
     }
@@ -122,10 +124,10 @@ const [systemPrompt, setSystemPrompt] = useState("");
     if (!config) return;
     try {
       await saveConfig({ ...config, ...updates });
-      toast.success("Settings saved");
+      toast.success(t('toast.settingsSaved'));
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || "Unknown error";
-      toast.error(`Failed to save settings: ${msg}`);
+      const msg = err.response?.data?.error || err.message || t('unknownError');
+      toast.error(t('toast.failedToSaveSettings', { msg }));
     }
   };
 
@@ -135,11 +137,11 @@ const [systemPrompt, setSystemPrompt] = useState("");
       const newPaths = await getPaths();
       setPathsInfo(newPaths);
       await refreshData();
-      toast.success(manualPath ? "Config path updated" : "Reset to auto-detect");
+      toast.success(manualPath ? t('toast.configPathUpdated') : t('toast.resetToAutoDetect'));
       setManualPath("");
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || "Unknown error";
-      toast.error(`Failed to set config path: ${msg}`);
+      const msg = err.response?.data?.error || err.message || t('unknownError');
+      toast.error(t('toast.failedToSetConfigPath', { msg }));
     }
   };
 
@@ -149,10 +151,10 @@ const [systemPrompt, setSystemPrompt] = useState("");
       const newPaths = await getPaths();
       setPathsInfo(newPaths);
       await refreshData();
-      toast.success("Reset to auto-detect");
+      toast.success(t('toast.resetToAutoDetect'));
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || "Unknown error";
-      toast.error(`Failed to reset path: ${msg}`);
+      const msg = err.response?.data?.error || err.message || t('unknownError');
+      toast.error(t('toast.failedToResetPath', { msg }));
     }
   };
 
@@ -168,10 +170,10 @@ const [systemPrompt, setSystemPrompt] = useState("");
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast.success("Backup downloaded");
+      toast.success(t('toast.backupDownloaded'));
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || "Unknown error";
-      toast.error(`Failed to create backup: ${msg}`);
+      const msg = err.response?.data?.error || err.message || t('unknownError');
+      toast.error(t('toast.failedToCreateBackup', { msg }));
     }
   };
 
@@ -184,16 +186,16 @@ const [systemPrompt, setSystemPrompt] = useState("");
       const backup = JSON.parse(content) as BackupData;
       
       if (!backup.version || backup.version !== 1) {
-        toast.error("Invalid backup file format (expected version 1)");
+        toast.error(t('toast.invalidBackupFormat'));
         return;
       }
 
       await restoreBackup(backup);
       await refreshData();
-      toast.success("Backup restored successfully");
+      toast.success(t('toast.backupRestored'));
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || "Unknown error";
-      toast.error(`Failed to restore backup: ${msg}`);
+      const msg = err.response?.data?.error || err.message || t('unknownError');
+      toast.error(t('toast.failedToRestoreBackup', { msg }));
     }
     
     if (fileInputRef.current) {
@@ -203,18 +205,18 @@ const [systemPrompt, setSystemPrompt] = useState("");
  
   const handleGitHubBackup = async () => {
     if (!ghOwner || !ghRepo) {
-      toast.error("Owner and repo required");
+      toast.error(t('toast.ownerAndRepoRequired'));
       return;
     }
     setBackingUp(true);
     try {
       const result = await backupToGitHub({ owner: ghOwner, repo: ghRepo, branch: ghBranch });
       if (result.success) {
-        toast.success(`Backup complete: ${result.url}`);
+        toast.success(t('toast.backupComplete', { url: result.url ?? '' }));
         const status = await getGitHubBackupStatus();
         setGhBackupStatus(status);
       } else {
-        toast.error(result.error || "Backup failed");
+        toast.error(result.error || t('toast.backupFailed'));
       }
     } catch (err: any) {
       toast.error(err.response?.data?.error || err.message);
@@ -225,7 +227,7 @@ const [systemPrompt, setSystemPrompt] = useState("");
 
   const handleGitHubRestore = async () => {
     if (!ghOwner || !ghRepo) {
-      toast.error("Owner and repo required");
+      toast.error(t('toast.ownerAndRepoRequired'));
       return;
     }
     setRestoring(true);
@@ -235,7 +237,7 @@ const [systemPrompt, setSystemPrompt] = useState("");
         toast.success(result.message);
         await refreshData();
       } else {
-        toast.error("Restore failed");
+        toast.error(t('toast.restoreFailed'));
       }
     } catch (err: any) {
       toast.error(err.response?.data?.error || err.message);
@@ -249,7 +251,7 @@ const [systemPrompt, setSystemPrompt] = useState("");
       await setGitHubAutoSync(enabled);
       const status = await getGitHubBackupStatus();
       setGhBackupStatus(status);
-      toast.success(enabled ? "Auto-sync enabled" : "Auto-sync disabled");
+      toast.success(enabled ? t('toast.autoSyncEnabled') : t('toast.autoSyncDisabled'));
     } catch (err: any) {
       toast.error(err.response?.data?.error || err.message);
     }
@@ -258,7 +260,7 @@ const [systemPrompt, setSystemPrompt] = useState("");
   if (loading) {
     return (
       <div className="space-y-4 animate-fade-in">
-        <PageHelp title="Settings" docUrl="https://opencode.ai/docs" docTitle="Settings" />
+        <PageHelp title={t('pageTitle')} docUrl="https://opencode.ai/docs" docTitle={t('pageDocTitle')} />
         <Skeleton className="h-96" />
       </div>
     );
@@ -266,7 +268,7 @@ const [systemPrompt, setSystemPrompt] = useState("");
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <PageHelp title="Settings" docUrl="https://opencode.ai/docs" docTitle="Settings" />
+      <PageHelp title={t('pageTitle')} docUrl="https://opencode.ai/docs" docTitle={t('pageDocTitle')} />
 
       <Collapsible open={openSections.general} onOpenChange={() => toggleSection("general")}>
         <Card className="hover-lift">
@@ -275,18 +277,18 @@ const [systemPrompt, setSystemPrompt] = useState("");
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Settings className="h-5 w-5" />
-                  <CardTitle>General Settings</CardTitle>
+                  <CardTitle>{t('general.title')}</CardTitle>
                 </div>
                 <ChevronDown className={`h-5 w-5 transition-transform duration-200 ${openSections.general ? "rotate-180" : ""}`} />
               </div>
-              <CardDescription>Configure core OpenCode behavior</CardDescription>
+              <CardDescription>{t('general.description')}</CardDescription>
             </CardHeader>
           </CollapsibleTrigger>
           <CollapsibleContent className="animate-scale-in">
             <CardContent className="space-y-6 pt-0">
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label>Theme</Label>
+                  <Label>{t('general.theme')}</Label>
                   <Select
                     value={config?.theme || "dark"}
                     onValueChange={(v) => updateConfig({ theme: v as typeof THEMES[number] })}
@@ -295,15 +297,15 @@ const [systemPrompt, setSystemPrompt] = useState("");
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {THEMES.map((t) => (
-                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      {THEMES.map((theme) => (
+                        <SelectItem key={theme} value={theme}>{theme}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Share Mode</Label>
+                  <Label>{t('general.shareMode')}</Label>
                   <Select
                     value={config?.share || "manual"}
                     onValueChange={(v) => updateConfig({ share: v as typeof SHARE_OPTIONS[number] })}
@@ -320,37 +322,37 @@ const [systemPrompt, setSystemPrompt] = useState("");
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Default Agent</Label>
+                  <Label>{t('general.defaultAgent')}</Label>
                   <Input
                     value={config?.default_agent || ""}
                     onChange={(e) => updateConfig({ default_agent: e.target.value || undefined })}
-                    placeholder="e.g., build"
+                    placeholder={t('general.defaultAgentPlaceholder')}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Username</Label>
+                  <Label>{t('general.username')}</Label>
                   <Input
                     value={config?.username || ""}
                     onChange={(e) => updateConfig({ username: e.target.value || undefined })}
-                    placeholder="Your name"
+                    placeholder={t('general.usernamePlaceholder')}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Small Model</Label>
+                  <Label>{t('general.smallModel')}</Label>
                   <Input
                     value={config?.small_model || ""}
                     onChange={(e) => updateConfig({ small_model: e.target.value || undefined })}
-                    placeholder="e.g., gpt-4o-mini"
+                    placeholder={t('general.smallModelPlaceholder')}
                   />
                 </div>
               </div>
 
               <div className="flex items-center justify-between p-4 bg-background rounded-lg">
                 <div>
-                  <Label>Auto Update</Label>
-                  <p className="text-sm text-muted-foreground">Automatically update OpenCode</p>
+                  <Label>{t('general.autoUpdate')}</Label>
+                  <p className="text-sm text-muted-foreground">{t('general.autoUpdateDescription')}</p>
                 </div>
                 <Switch
                   checked={config?.autoupdate === true}
@@ -360,8 +362,8 @@ const [systemPrompt, setSystemPrompt] = useState("");
 
               <div className="flex items-center justify-between p-4 bg-background rounded-lg">
                 <div>
-                  <Label>Snapshot</Label>
-                  <p className="text-sm text-muted-foreground">Enable conversation snapshots</p>
+                  <Label>{t('general.snapshot')}</Label>
+                  <p className="text-sm text-muted-foreground">{t('general.snapshotDescription')}</p>
                 </div>
                 <Switch
                   checked={config?.snapshot === true}
@@ -380,11 +382,11 @@ const [systemPrompt, setSystemPrompt] = useState("");
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Settings className="h-5 w-5" />
-                  <CardTitle>Permissions</CardTitle>
+                  <CardTitle>{t('permissions.title')}</CardTitle>
                 </div>
                 <ChevronDown className={`h-5 w-5 transition-transform duration-200 ${openSections.permissions ? "rotate-180" : ""}`} />
               </div>
-              <CardDescription>Manage tool permissions and patterns</CardDescription>
+              <CardDescription>{t('permissions.description')}</CardDescription>
             </CardHeader>
           </CollapsibleTrigger>
           <CollapsibleContent className="animate-scale-in">
@@ -405,11 +407,11 @@ const [systemPrompt, setSystemPrompt] = useState("");
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Code className="h-5 w-5" />
-                  <CardTitle>System Prompt</CardTitle>
+                  <CardTitle>{t('systemPrompt.title')}</CardTitle>
                 </div>
                 <ChevronDown className={`h-5 w-5 transition-transform duration-200 ${openSections.prompts ? "rotate-180" : ""}`} />
               </div>
-              <CardDescription>Edit your global OPENCODE.md instructions</CardDescription>
+              <CardDescription>{t('systemPrompt.description')}</CardDescription>
             </CardHeader>
           </CollapsibleTrigger>
           <CollapsibleContent className="animate-scale-in">
@@ -439,7 +441,7 @@ const [systemPrompt, setSystemPrompt] = useState("");
               <div className="flex justify-end">
                 <Button onClick={handleSaveSystemPrompt} disabled={savingPrompt}>
                   {savingPrompt && <Loader className="mr-2 h-4 w-4 animate-spin" />}
-                  Save Changes
+                  {t('systemPrompt.saveChanges')}
                 </Button>
               </div>
             </CardContent>
@@ -456,11 +458,11 @@ const [systemPrompt, setSystemPrompt] = useState("");
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Save className="h-5 w-5" />
-                  <CardTitle>Backup & Restore</CardTitle>
+                  <CardTitle>{t('backup.title')}</CardTitle>
                 </div>
                 <ChevronDown className={`h-5 w-5 transition-transform duration-200 ${openSections.backup ? "rotate-180" : ""}`} />
               </div>
-              <CardDescription>Export or import your complete OpenCode configuration</CardDescription>
+              <CardDescription>{t('backup.description')}</CardDescription>
             </CardHeader>
           </CollapsibleTrigger>
           <CollapsibleContent className="animate-scale-in">
@@ -469,15 +471,15 @@ const [systemPrompt, setSystemPrompt] = useState("");
                 <div className="flex items-center gap-4">
                   <Download className="h-8 w-8 text-primary" />
                   <div>
-                    <Label className="text-base">Export Backup</Label>
+                    <Label className="text-base">{t('backup.exportTitle')}</Label>
                     <p className="text-sm text-muted-foreground">
-                      Download all settings, MCP configs, skills, and plugins
+                      {t('backup.exportDescription')}
                     </p>
                   </div>
                 </div>
                 <Button onClick={handleBackup} className="w-full">
                   <Download className="h-4 w-4 mr-2" />
-                  Download Backup
+                  {t('backup.downloadBackup')}
                 </Button>
               </div>
 
@@ -485,9 +487,9 @@ const [systemPrompt, setSystemPrompt] = useState("");
                 <div className="flex items-center gap-4">
                   <Upload className="h-8 w-8 text-primary" />
                   <div>
-                    <Label className="text-base">Restore Backup</Label>
+                    <Label className="text-base">{t('backup.restoreTitle')}</Label>
                     <p className="text-sm text-muted-foreground">
-                      Import a previously exported backup file
+                      {t('backup.restoreDescription')}
                     </p>
                   </div>
                 </div>
@@ -504,10 +506,10 @@ const [systemPrompt, setSystemPrompt] = useState("");
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <Upload className="h-4 w-4 mr-2" />
-                  Select Backup File
+                  {t('backup.selectBackupFile')}
                 </Button>
 <p className="text-xs text-muted-foreground text-center">
-                  Warning: This will overwrite your current configuration
+                  {t('backup.restoreWarning')}
                 </p>
               </div>
 
@@ -516,9 +518,9 @@ const [systemPrompt, setSystemPrompt] = useState("");
                 <div className="flex items-center gap-4 mb-4">
                   <Github className="h-8 w-8 text-primary" />
                   <div>
-                    <Label className="text-base">GitHub Sync</Label>
+                    <Label className="text-base">{t('backup.githubSync')}</Label>
                     <p className="text-sm text-muted-foreground">
-                      Sync config to a private GitHub repository
+                      {t('backup.githubSyncDescription')}
                     </p>
                   </div>
                 </div>
@@ -528,34 +530,34 @@ const [systemPrompt, setSystemPrompt] = useState("");
                     <div className="p-4 bg-muted/30 rounded-lg space-y-3 mb-4">
                       <div className="flex items-center gap-2">
                         <div className="h-2 w-2 rounded-full bg-green-500" />
-                        <span className="text-sm">Connected as {ghBackupStatus.user}</span>
+                        <span className="text-sm">{t('backup.connectedAs', { user: ghBackupStatus.user ?? '' })}</span>
                       </div>
                       {ghBackupStatus.lastUpdated && (
                         <p className="text-xs text-muted-foreground">
-                          Last sync: {new Date(ghBackupStatus.lastUpdated).toLocaleString()}
+                          {t('backup.lastSync', { date: new Date(ghBackupStatus.lastUpdated).toLocaleString() })}
                         </p>
                       )}
                     </div>
                     
                     <div className="grid grid-cols-3 gap-3 mb-4">
                       <div className="space-y-2">
-                        <Label className="text-xs">Owner</Label>
+                        <Label className="text-xs">{t('backup.owner')}</Label>
                         <Input value={ghOwner} onChange={(e) => setGhOwner(e.target.value)} placeholder="username" />
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-xs">Repository</Label>
+                        <Label className="text-xs">{t('backup.repository')}</Label>
                         <Input value={ghRepo} onChange={(e) => setGhRepo(e.target.value)} placeholder="opencode-backup" />
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-xs">Branch</Label>
+                        <Label className="text-xs">{t('backup.branch')}</Label>
                         <Input value={ghBranch} onChange={(e) => setGhBranch(e.target.value)} placeholder="main" />
                       </div>
                     </div>
                     
                     <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg mb-4">
                       <div>
-                        <Label>Auto-Sync</Label>
-                        <p className="text-xs text-muted-foreground">Sync on startup</p>
+                        <Label>{t('backup.autoSync')}</Label>
+                        <p className="text-xs text-muted-foreground">{t('backup.autoSyncDescription')}</p>
                       </div>
                       <Switch
                         checked={ghBackupStatus.autoSync || false}
@@ -566,18 +568,18 @@ const [systemPrompt, setSystemPrompt] = useState("");
                     <div className="grid grid-cols-2 gap-3">
                       <Button onClick={handleGitHubBackup} disabled={backingUp || restoring}>
                         {backingUp ? <Loader className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-                        {backingUp ? "Pushing..." : "Push to GitHub"}
+                        {backingUp ? t('backup.pushing') : t('backup.pushToGithub')}
                       </Button>
                       <Button variant="outline" onClick={handleGitHubRestore} disabled={backingUp || restoring}>
                         {restoring ? <Loader className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-                        {restoring ? "Pulling..." : "Pull from GitHub"}
+                        {restoring ? t('backup.pulling') : t('backup.pullFromGithub')}
                       </Button>
                     </div>
                   </>
                 ) : (
                   <div className="p-4 bg-muted/30 rounded-lg">
                     <p className="text-sm text-muted-foreground">
-                      GitHub CLI not authenticated. Run <code className="bg-muted px-1 rounded">gh auth login</code> first.
+                      {t('backup.ghCliNotAuth')} <code className="bg-muted px-1 rounded">{t('backup.ghCliCommand')}</code> {t('backup.ghCliNotAuthAfter')}
                     </p>
                     {ghBackupStatus?.error && (
                       <p className="text-sm text-destructive mt-2">{ghBackupStatus.error}</p>

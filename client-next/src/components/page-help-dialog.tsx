@@ -1,98 +1,103 @@
+"use client";
+
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { InfoBox } from "@nsmr/pixelart-react";
 import type { PageHelpDialogProps } from "@/components/page-help";
-
-const helpContent: Record<string, { title: string; description: string; usage: string; tips?: string[] }> = {
-  agents: {
-    title: "Agents",
-    description: "Create and manage custom AI agents that can perform specific tasks with defined tools and permissions.",
-    usage: "Use the Agent Builder to configure identity, behavior, and capabilities. Toggle agents on/off as needed.",
-    tips: ["Agents run as subagents or primary modes", "Define tool permissions for security", "Write markdown-based agents for reusability"]
-  },
-  mcp: {
-    title: "MCP Servers",
-    description: "Model Context Protocol (MCP) servers extend AI capabilities with external tools and data sources.",
-    usage: "Toggle servers on/off, add new ones by pasting npx commands, delete unused configs.",
-    tips: ["MCP servers provide file system access, web browsing, and more", "Only enabled servers are active in AI sessions"]
-  },
-  skills: {
-    title: "Skills",
-    description: "Reusable prompt templates that guide AI behavior for specific tasks or domains.",
-    usage: "Browse existing skills, create new ones from templates, or bulk import from GitHub URLs.",
-    tips: ["Skills are stored as markdown files in ~/.config/opencode/skill/", "Use descriptive titles for better agent selection"]
-  },
-  plugins: {
-    title: "Plugins",
-    description: "JavaScript/TypeScript extensions that add custom tools, watchers, and lifecycle hooks to OpenCode.",
-    usage: "Create plugins from templates or import existing ones. Plugins can modify files, run commands, and monitor changes.",
-    tips: ["Plugins run in Node.js with full filesystem access", "Use lifecycle hooks to respond to events"]
-  },
-  commands: {
-    title: "Commands",
-    description: "Custom slash commands that create reusable prompt templates with argument placeholders.",
-    usage: "Create commands with $ARGUMENTS placeholder. Use /your-command in OpenCode CLI.",
-    tips: ["Commands are perfect for repetitive tasks", "Use clear, concise prompt templates"]
-  },
-  auth: {
-    title: "Authentication",
-    description: "Manage API credentials for cloud providers like Anthropic, OpenAI, Google, and GitHub.",
-    usage: "Login to providers via OAuth or API keys. Save profiles to switch between accounts easily.",
-    tips: ["Profiles isolate credentials per account", "OAuth tokens auto-refresh for supported providers"]
-  },
-  settings: {
-    title: "Settings",
-    description: "Configure global OpenCode behavior, model aliases, permissions, and system prompts.",
-    usage: "Expand sections to modify configuration. Changes apply immediately to AI sessions.",
-    tips: ["System prompt affects all agent conversations", "Permission patterns control tool access"]
-  },
-  profiles: {
-    title: "Profiles",
-    description: "Isolated OpenCode environments with separate configs, history, and session memory.",
-    usage: "Create new profiles for different projects or contexts. Switch instantly to change entire configuration.",
-    tips: ["Each profile has its own opencode.json", "Useful for separating work/personal projects"]
-  },
-  quickstart: {
-    title: "Quickstart",
-    description: "Interactive setup wizard to configure OpenCode for first-time users.",
-    usage: "Follow step-by-step setup to configure auth, MCP, skills, and essential settings.",
-    tips: ["Recommended for new OpenCode installations", "Creates basic configuration automatically"]
-  },
-  usage: {
-    title: "Token Usage",
-    description: "Dashboard showing token consumption, costs, and model breakdown across your AI sessions.",
-    usage: "View charts and tables to track spending. Filter by date range, project, or model.",
-    tips: ["Costs estimated based on model pricing", "Export logs for detailed analysis"]
-  },
-  logs: {
-    title: "Live Logs",
-    description: "Real-time viewer for OpenCode debug logs with filtering capabilities.",
-    usage: "Stream logs live, pause/resume, filter by type (MCP, Agent, Error). Useful for debugging.",
-    tips: ["Errors highlighted in red", "Use filters to focus on specific events"]
-  },
-  rules: {
-    title: "Project Rules",
-    description: "Configure AI behavior with project-specific instructions stored in AGENTS.md or CLAUDE.md.",
-    usage: "Edit rules files directly or use templates. Rules apply to all AI agents in the project.",
-    tips: ["AGENTS.md is recommended for project documentation", "Rules override default agent behavior"]
-  },
-  config: {
-    title: "Raw Config",
-    description: "Direct editor for opencode.json - the core OpenCode configuration file.",
-    usage: "Edit JSON directly. Validated before saving. Use for advanced configuration not available in UI.",
-    tips: ["JSON syntax errors prevent saving", "Use Format button to prettify JSON"]
-  },
-  editor: {
-    title: "Editor",
-    description: "Shared editor for creating and modifying skills, plugins, and commands.",
-    usage: "Use Monaco editor with syntax highlighting. Save creates or updates the file.",
-    tips: ["Skills require descriptions", "Plugins can use hooks and watchers", "Commands use $ARGUMENTS placeholder"]
-  }
-};
+import { useTranslations } from "next-intl";
 
 export function PageHelpDialog({ open, onOpenChange, page }: PageHelpDialogProps) {
+  const t = useTranslations('help');
+
+  const helpContent: Record<string, { title: string; description: string; usage: string; tips?: string[] }> = {
+    agents: {
+      title: t('agents.title'),
+      description: t('agents.description'),
+      usage: t('agents.usage'),
+      tips: [t('agents.tip0'), t('agents.tip1'), t('agents.tip2')]
+    },
+    mcp: {
+      title: t('mcp.title'),
+      description: t('mcp.description'),
+      usage: t('mcp.usage'),
+      tips: [t('mcp.tip0'), t('mcp.tip1')]
+    },
+    skills: {
+      title: t('skills.title'),
+      description: t('skills.description'),
+      usage: t('skills.usage'),
+      tips: [t('skills.tip0'), t('skills.tip1')]
+    },
+    plugins: {
+      title: t('plugins.title'),
+      description: t('plugins.description'),
+      usage: t('plugins.usage'),
+      tips: [t('plugins.tip0'), t('plugins.tip1')]
+    },
+    commands: {
+      title: t('commands.title'),
+      description: t('commands.description'),
+      usage: t('commands.usage'),
+      tips: [t('commands.tip0'), t('commands.tip1')]
+    },
+    auth: {
+      title: t('auth.title'),
+      description: t('auth.description'),
+      usage: t('auth.usage'),
+      tips: [t('auth.tip0'), t('auth.tip1')]
+    },
+    settings: {
+      title: t('settings.title'),
+      description: t('settings.description'),
+      usage: t('settings.usage'),
+      tips: [t('settings.tip0'), t('settings.tip1')]
+    },
+    profiles: {
+      title: t('profiles.title'),
+      description: t('profiles.description'),
+      usage: t('profiles.usage'),
+      tips: [t('profiles.tip0'), t('profiles.tip1')]
+    },
+    quickstart: {
+      title: t('quickstart.title'),
+      description: t('quickstart.description'),
+      usage: t('quickstart.usage'),
+      tips: [t('quickstart.tip0'), t('quickstart.tip1')]
+    },
+    usage: {
+      title: t('usage.title'),
+      description: t('usage.description'),
+      usage: t('usage.usage'),
+      tips: [t('usage.tip0'), t('usage.tip1')]
+    },
+    logs: {
+      title: t('logs.title'),
+      description: t('logs.description'),
+      usage: t('logs.usage'),
+      tips: [t('logs.tip0'), t('logs.tip1')]
+    },
+    rules: {
+      title: t('rules.title'),
+      description: t('rules.description'),
+      usage: t('rules.usage'),
+      tips: [t('rules.tip0'), t('rules.tip1')]
+    },
+    config: {
+      title: t('config.title'),
+      description: t('config.description'),
+      usage: t('config.usage'),
+      tips: [t('config.tip0'), t('config.tip1')]
+    },
+    editor: {
+      title: t('editor.title'),
+      description: t('editor.description'),
+      usage: t('editor.usage'),
+      tips: [t('editor.tip0'), t('editor.tip1'), t('editor.tip2')]
+    }
+  };
+
   const content = helpContent[page] || {
     title: page,
-    description: "No help content available.",
+    description: t('noContent'),
     usage: "",
     tips: []
   };
@@ -108,18 +113,18 @@ export function PageHelpDialog({ open, onOpenChange, page }: PageHelpDialogProps
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <h3 className="text-sm font-semibold">What is this?</h3>
+            <h3 className="text-sm font-semibold">{t('sectionLabels.whatIsThis')}</h3>
             <p className="text-sm text-muted-foreground">{content.description}</p>
           </div>
 
           <div className="space-y-2">
-            <h3 className="text-sm font-semibold">How to use</h3>
+            <h3 className="text-sm font-semibold">{t('sectionLabels.howToUse')}</h3>
             <p className="text-sm text-muted-foreground">{content.usage}</p>
           </div>
 
           {content.tips && content.tips.length > 0 && (
             <div className="space-y-2">
-              <h3 className="text-sm font-semibold">Tips</h3>
+              <h3 className="text-sm font-semibold">{t('sectionLabels.tips')}</h3>
               <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
                 {content.tips.map((tip, idx) => (
                   <li key={idx}>{tip}</li>
@@ -135,7 +140,7 @@ export function PageHelpDialog({ open, onOpenChange, page }: PageHelpDialogProps
               rel="noopener noreferrer" 
               className="text-xs text-primary hover:underline flex items-center gap-1"
             >
-              View documentation on GitHub →
+              {t('sectionLabels.viewDocs')}
             </a>
           </div>
         </div>

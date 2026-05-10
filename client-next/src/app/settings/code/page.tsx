@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { useApp } from "@/lib/context";
 import { getApiBaseUrl, getPaths, getProjectRules, getSystemTools } from "@/lib/api";
@@ -41,6 +42,7 @@ const FORMATTER_LIST = [
 ];
 
 export default function CodeSettingsPage() {
+  const t = useTranslations('settings');
   const { config, saveConfig } = useApp();
   const [tools, setTools] = useState<SystemToolInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,7 +64,7 @@ export default function CodeSettingsPage() {
         setRules(rulesData);
         setTools(toolsData);
       } catch (err: any) {
-        toast.error(err?.message || "Failed to load code settings metadata");
+        toast.error(err?.message || t('code.toast.failedToLoadMetadata'));
       } finally {
         setLoading(false);
       }
@@ -100,49 +102,48 @@ export default function CodeSettingsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHelp title="Code Settings" docUrl="https://opencode.ai/docs" docTitle="LSP & Formatter Manager" />
+      <PageHelp title={t('code.pageTitle')} docUrl="https://opencode.ai/docs" docTitle={t('code.pageDocTitle')} />
 
       <Card>
         <CardHeader>
-          <CardTitle>Resolution Context</CardTitle>
+          <CardTitle>{t('code.resolutionContext.title')}</CardTitle>
           <p className="text-sm text-muted-foreground">
-            This shows the live backend URL, the active OpenCode config path, and the rules file the backend resolved.
+            {t('code.resolutionContext.description')}
           </p>
         </CardHeader>
         <CardContent className="grid gap-3 text-sm md:grid-cols-2">
           <div>
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">Backend URL</div>
-            <div className="font-mono break-all">{loading ? "Loading..." : backendUrl || "Unknown"}</div>
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">{t('code.resolutionContext.backendUrl')}</div>
+            <div className="font-mono break-all">{loading ? t('loading') : backendUrl || t('code.resolutionContext.unknown')}</div>
           </div>
           <div>
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">Active Config</div>
-            <div className="font-mono break-all">{loading ? "Loading..." : paths?.current || "Unknown"}</div>
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">{t('code.resolutionContext.activeConfig')}</div>
+            <div className="font-mono break-all">{loading ? t('loading') : paths?.current || t('code.resolutionContext.unknown')}</div>
           </div>
           <div>
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">Detected Config</div>
-            <div className="font-mono break-all">{loading ? "Loading..." : paths?.detected || "None"}</div>
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">{t('code.resolutionContext.detectedConfig')}</div>
+            <div className="font-mono break-all">{loading ? t('loading') : paths?.detected || t('code.resolutionContext.none')}</div>
           </div>
           <div>
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">Project Rules</div>
-            <div className="font-mono break-all">{loading ? "Loading..." : rules?.path || "None"}</div>
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">{t('code.resolutionContext.projectRules')}</div>
+            <div className="font-mono break-all">{loading ? t('loading') : rules?.path || t('code.resolutionContext.none')}</div>
           </div>
           <div>
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">Rules Source</div>
-            <div className="font-mono break-all">{loading ? "Loading..." : rules?.source || "none"}</div>
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">{t('code.resolutionContext.rulesSource')}</div>
+            <div className="font-mono break-all">{loading ? t('loading') : rules?.source || "none"}</div>
           </div>
           <div>
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">PATH Strategy</div>
-            <div className="font-mono break-all">Backend shell lookup (`which` on WSL/Linux, `where` on Windows)</div>
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">{t('code.resolutionContext.pathStrategy')}</div>
+            <div className="font-mono break-all">{t('code.resolutionContext.pathStrategyDescription')}</div>
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>LSP Servers</CardTitle>
+          <CardTitle>{t('code.lsp.title')}</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Detection uses the backend shell PATH. If a binary lives in `~/.nvm`, `~/.local/bin`, `~/.cargo/bin`, or
-            similar, start OpenCode Studio from a shell that exports that PATH.
+            {t('code.lsp.description')}
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -157,14 +158,14 @@ export default function CodeSettingsPage() {
                 </div>
                 <div className="space-y-1">
                   <Badge variant={tool?.available ? "secondary" : "outline"}>
-                    {loading ? "Checking" : tool?.available ? "Detected in PATH" : "Not Found in PATH"}
+                    {loading ? t('code.lsp.checking') : tool?.available ? t('code.lsp.detectedInPath') : t('code.lsp.notFoundInPath')}
                   </Badge>
                   <div className="text-[11px] text-muted-foreground break-all">
                     {loading
-                      ? "Looking up via backend `which`"
+                      ? t('code.lsp.lookingUpViaBackend')
                       : tool?.available
                         ? tool.path
-                        : `Searched via backend \`which ${item.tool}\``}
+                        : t('code.lsp.searchedViaBackend', { tool: item.tool })}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -172,10 +173,10 @@ export default function CodeSettingsPage() {
                     checked={!cfg?.disabled}
                     onCheckedChange={(checked) => updateLsp(item.id, { disabled: !checked })}
                   />
-                  <span className="text-xs text-muted-foreground">Enabled</span>
+                  <span className="text-xs text-muted-foreground">{t('code.lsp.enabled')}</span>
                 </div>
                 <Input
-                  placeholder="Command override"
+                  placeholder={t('code.lsp.commandOverride')}
                   value={Array.isArray(cfg?.command) ? cfg.command.join(" ") : ""}
                   onChange={(e) => updateLsp(item.id, { command: e.target.value.split(" ").filter(Boolean) })}
                 />
@@ -187,8 +188,8 @@ export default function CodeSettingsPage() {
 
       <Card>
         <CardHeader>
-          <PageHelp title="Code Settings" docUrl="https://opencode.ai/docs" docTitle="LSP & Formatter Manager" />
-          <CardTitle>Formatters</CardTitle>
+          <PageHelp title={t('code.pageTitle')} docUrl="https://opencode.ai/docs" docTitle={t('code.pageDocTitle')} />
+          <CardTitle>{t('code.formatters.title')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {FORMATTER_LIST.map((item) => {
@@ -202,14 +203,14 @@ export default function CodeSettingsPage() {
                 </div>
                 <div className="space-y-1">
                   <Badge variant={tool?.available ? "secondary" : "outline"}>
-                    {loading ? "Checking" : tool?.available ? "Detected in PATH" : "Not Found in PATH"}
+                    {loading ? t('code.lsp.checking') : tool?.available ? t('code.lsp.detectedInPath') : t('code.lsp.notFoundInPath')}
                   </Badge>
                   <div className="text-[11px] text-muted-foreground break-all">
                     {loading
-                      ? "Looking up via backend `which`"
+                      ? t('code.lsp.lookingUpViaBackend')
                       : tool?.available
                         ? tool.path
-                        : `Searched via backend \`which ${item.tool}\``}
+                        : t('code.lsp.searchedViaBackend', { tool: item.tool })}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -217,10 +218,10 @@ export default function CodeSettingsPage() {
                     checked={!cfg?.disabled}
                     onCheckedChange={(checked) => updateFormatter(item.id, { disabled: !checked })}
                   />
-                  <span className="text-xs text-muted-foreground">Enabled</span>
+                  <span className="text-xs text-muted-foreground">{t('code.lsp.enabled')}</span>
                 </div>
                 <Input
-                  placeholder="Command override"
+                  placeholder={t('code.lsp.commandOverride')}
                   value={Array.isArray(cfg?.command) ? cfg.command.join(" ") : ""}
                   onChange={(e) => updateFormatter(item.id, { command: e.target.value.split(" ").filter(Boolean) })}
                 />

@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Plus, Alert as AlertIcon, MoonStar } from "@nsmr/pixelart-react";
 import type { MCPConfig } from "@/types";
+import { useTranslations } from "next-intl";
 
 interface AddMCPDialogProps {
   onAdd: (name: string, config: MCPConfig) => Promise<void>;
@@ -125,6 +126,7 @@ function buildDefaultConfig(): MCPConfig {
 }
 
 export function AddMCPDialog({ onAdd }: AddMCPDialogProps) {
+  const t = useTranslations('dialogs');
   const [open, setOpen] = useState(false);
   const [pasteInput, setPasteInput] = useState("");
   const [name, setName] = useState("");
@@ -154,12 +156,12 @@ export function AddMCPDialog({ onAdd }: AddMCPDialogProps) {
     setError("");
 
     if (!name.trim()) {
-      setError("Please enter a server name");
+      setError(t('addMcp.errors.nameRequired'));
       return;
     }
 
     if (name.includes(" ")) {
-      setError("Server name should not contain spaces");
+      setError(t('addMcp.errors.nameNoSpaces'));
       return;
     }
 
@@ -167,11 +169,11 @@ export function AddMCPDialog({ onAdd }: AddMCPDialogProps) {
     try {
       config = JSON.parse(configJson);
       if (typeof config !== "object" || Array.isArray(config)) {
-        setError("Config must be a JSON object");
+        setError(t('addMcp.errors.configNotObject'));
         return;
       }
     } catch {
-      setError("Invalid JSON");
+      setError(t('addMcp.errors.invalidJson'));
       return;
     }
 
@@ -181,7 +183,7 @@ export function AddMCPDialog({ onAdd }: AddMCPDialogProps) {
       resetForm();
       setOpen(false);
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || "Failed to add server";
+      const msg = err.response?.data?.error || err.message || t('addMcp.errors.failedToAdd');
       setError(msg);
     } finally {
       setLoading(false);
@@ -193,12 +195,12 @@ export function AddMCPDialog({ onAdd }: AddMCPDialogProps) {
       <DialogTrigger asChild>
         <Button size="sm">
           <Plus className="h-4 w-4 mr-2" />
-          Add MCP Server
+          {t('addMcp.trigger')}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Add MCP Server</DialogTitle>
+          <DialogTitle>{t('addMcp.title')}</DialogTitle>
         </DialogHeader>
 
         {error && (
@@ -212,31 +214,31 @@ export function AddMCPDialog({ onAdd }: AddMCPDialogProps) {
           <div className="space-y-2 p-3 bg-background rounded-lg border border-dashed">
             <Label className="flex items-center gap-2 text-sm">
               <MoonStar className="h-4 w-4" />
-              Quick Add - Paste command or JSON
+              {t('addMcp.quickAddLabel')}
             </Label>
             <Textarea
               value={pasteInput}
               onChange={(e) => setPasteInput(e.target.value)}
-              placeholder={'npx -y @modelcontextprotocol/server-memory\n\nor paste full JSON config'}
+              placeholder={t('addMcp.quickAddPlaceholder')}
               className="font-mono text-sm min-h-[60px]"
             />
             <p className="text-xs text-muted-foreground">
-              Paste npx command or JSON (supports mcpServers wrapper format)
+              {t('addMcp.quickAddHint')}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="name">Server Name</Label>
+            <Label htmlFor="name">{t('addMcp.serverNameLabel')}</Label>
             <Input
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., memory-server"
+              placeholder={t('addMcp.serverNamePlaceholder')}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="configJson">Config (JSON)</Label>
+            <Label htmlFor="configJson">{t('addMcp.configLabel')}</Label>
             <Textarea
               id="configJson"
               value={configJson}
@@ -244,16 +246,16 @@ export function AddMCPDialog({ onAdd }: AddMCPDialogProps) {
               className="font-mono text-sm min-h-[200px]"
             />
             <p className="text-xs text-muted-foreground">
-              Full MCP config. Edit directly to add env, timeout, oauth, etc.
+              {t('addMcp.configHint')}
             </p>
           </div>
 
           <div className="flex justify-end gap-2 pt-4">
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
-              Cancel
+              {t('cancel')}
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? "Adding..." : "Add Server"}
+              {loading ? t('addMcp.adding') : t('addMcp.addServer')}
             </Button>
           </div>
         </form>

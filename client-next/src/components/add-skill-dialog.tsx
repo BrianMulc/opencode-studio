@@ -16,6 +16,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Plus, Alert as AlertIcon, Link, Loader } from "@nsmr/pixelart-react";
 import { saveSkill, fetchUrl } from "@/lib/api";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 
 interface AddSkillDialogProps {
   onSuccess: () => void;
@@ -90,6 +91,7 @@ function parseFrontmatter(content: string): { name: string; description: string;
 }
 
 export function AddSkillDialog({ onSuccess }: AddSkillDialogProps) {
+  const t = useTranslations('dialogs');
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -111,7 +113,7 @@ export function AddSkillDialog({ onSuccess }: AddSkillDialogProps) {
     if (!urlInput.trim()) return;
     
     if (!isUrl(urlInput)) {
-      setError("Please enter a valid URL (http:// or https://)");
+      setError(t('addSkill.errors.invalidUrl'));
       return;
     }
 
@@ -133,10 +135,10 @@ export function AddSkillDialog({ onSuccess }: AddSkillDialogProps) {
         }
       }
       
-      toast.success("Fetched content from URL");
+      toast.success(t('fetchedToast'));
       setUrlInput("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch URL");
+      setError(err instanceof Error ? err.message : t('fetchFailed'));
     } finally {
       setFetching(false);
     }
@@ -165,11 +167,11 @@ export function AddSkillDialog({ onSuccess }: AddSkillDialogProps) {
           }
         }
         
-        toast.success("Fetched content from URL");
+        toast.success(t('fetchedToast'));
         setUrlInput("");
       } catch (err) {
         setUrlInput(pastedText);
-        setError(err instanceof Error ? err.message : "Failed to fetch URL");
+        setError(err instanceof Error ? err.message : t('fetchFailed'));
       } finally {
         setFetching(false);
       }
@@ -181,41 +183,41 @@ export function AddSkillDialog({ onSuccess }: AddSkillDialogProps) {
     setError("");
 
     if (!name.trim()) {
-      setError("Please enter a skill name");
+      setError(t('addSkill.errors.nameRequired'));
       return;
     }
 
     if (!description.trim()) {
-      setError("Please enter a skill description (required by OpenCode)");
+      setError(t('addSkill.errors.descriptionRequired'));
       return;
     }
 
     const skillName = name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(skillName)) {
-      setError("Name must be lowercase alphanumeric with single hyphens (e.g., my-skill)");
+      setError(t('addSkill.errors.nameFormat'));
       return;
     }
 
     if (skillName.length > 64) {
-      setError("Name must be 64 characters or less");
+      setError(t('addSkill.errors.nameTooLong'));
       return;
     }
 
     if (description.length > 1024) {
-      setError("Description must be 1024 characters or less");
+      setError(t('addSkill.errors.descriptionTooLong'));
       return;
     }
 
     try {
       setLoading(true);
       await saveSkill(skillName, description, content);
-      toast.success(`Created skill: ${skillName}`);
+      toast.success(t('addSkill.createdToast', { name: skillName }));
       resetForm();
       setOpen(false);
       onSuccess();
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || "Failed to create skill";
+      const msg = err.response?.data?.error || err.message || t('addSkill.errors.createFailed');
       setError(msg);
     } finally {
       setLoading(false);
@@ -227,12 +229,12 @@ export function AddSkillDialog({ onSuccess }: AddSkillDialogProps) {
       <DialogTrigger asChild>
         <Button size="sm">
           <Plus className="h-4 w-4 mr-2" />
-          New Skill
+          {t('addSkill.trigger')}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create New Skill</DialogTitle>
+          <DialogTitle>{t('addSkill.title')}</DialogTitle>
         </DialogHeader>
 
         {error && (
@@ -246,14 +248,14 @@ export function AddSkillDialog({ onSuccess }: AddSkillDialogProps) {
           <div className="space-y-2 p-3 rounded-lg border border-dashed">
             <Label className="flex items-center gap-2">
               <Link className="h-4 w-4" />
-              Import from URL
+              {t('importLabel')}
             </Label>
             <div className="flex gap-2">
               <Input
                 value={urlInput}
                 onChange={(e) => setUrlInput(e.target.value)}
                 onPaste={handlePaste}
-                placeholder="Paste URL to a SKILL.md file..."
+                placeholder={t('addSkill.importPlaceholder')}
                 className="flex-1"
               />
               <Button 
@@ -262,42 +264,42 @@ export function AddSkillDialog({ onSuccess }: AddSkillDialogProps) {
                 onClick={handleFetchUrl}
                 disabled={fetching || !urlInput.trim()}
               >
-                {fetching ? <Loader className="h-4 w-4 animate-spin" /> : "Fetch"}
+                {fetching ? <Loader className="h-4 w-4 animate-spin" /> : t('fetch')}
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Paste a URL to automatically fetch skill content (e.g., raw GitHub URL to SKILL.md)
+              {t('addSkill.importHint')}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="skill-name">Name *</Label>
+            <Label htmlFor="skill-name">{t('addSkill.nameLabel')}</Label>
             <Input
               id="skill-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="my-skill"
+              placeholder={t('addSkill.namePlaceholder')}
             />
             <p className="text-xs text-muted-foreground">
-              Lowercase alphanumeric with hyphens. Will create: skill/{name || "my-skill"}/SKILL.md
+              {t('addSkill.nameHint', { name: name || 'my-skill' })}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="skill-description">Description *</Label>
+            <Label htmlFor="skill-description">{t('addSkill.descriptionLabel')}</Label>
             <Input
               id="skill-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Brief description of what this skill does"
+              placeholder={t('addSkill.descriptionPlaceholder')}
             />
             <p className="text-xs text-muted-foreground">
-              Required by OpenCode. Helps the agent decide when to use this skill.
+              {t('addSkill.descriptionHint')}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="skill-content">Content (Markdown)</Label>
+            <Label htmlFor="skill-content">{t('addSkill.contentLabel')}</Label>
             <Textarea
               id="skill-content"
               value={content}
@@ -308,10 +310,10 @@ export function AddSkillDialog({ onSuccess }: AddSkillDialogProps) {
 
           <div className="flex justify-end gap-2 pt-4">
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
-              Cancel
+              {t('cancel')}
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? "Creating..." : "Create Skill"}
+              {loading ? t('addSkill.creating') : t('addSkill.createSkill')}
             </Button>
           </div>
         </form>
