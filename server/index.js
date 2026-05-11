@@ -5,7 +5,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const { DatabaseSync } = require('node:sqlite');
+let DatabaseSync;
+try { ({ DatabaseSync } = require('node:sqlite')); } catch {}
 const { spawn, exec, execSync } = require('child_process');
 const yaml = require('js-yaml');
 const configProviders = require('./lib/config-providers');
@@ -4903,6 +4904,7 @@ function finalizeUsageStats(stats) {
 }
 
 function tryReadUsageFromSqlite(opts) {
+    if (!DatabaseSync) return null;
     const { dbPath, projectIdFilter, min, max, granularity } = opts;
     let db;
     try {
