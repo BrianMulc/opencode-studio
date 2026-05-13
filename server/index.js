@@ -782,11 +782,6 @@ const getSkillDirs = () => {
     const dirs = [];
 
     for (const root of roots) {
-        const skillDir = path.join(root, 'skill');
-        if (fs.existsSync(skillDir)) {
-            dirs.push({ path: skillDir, source: 'skill-dir', root });
-        }
-
         const skillsDir = path.join(root, 'skills');
         if (fs.existsSync(skillsDir)) {
             try {
@@ -3160,7 +3155,7 @@ app.post('/api/github/autosync', async (req, res) => {
 
 const getActiveSkillDir = () => {
     const cp = getConfigPath();
-    return cp ? path.join(path.dirname(cp), 'skill') : null;
+    return cp ? path.join(path.dirname(cp), 'skills') : null;
 };
 
 app.get('/api/skills', (req, res) => {
@@ -3250,7 +3245,7 @@ app.post('/api/skills/:name', (req, res) => {
              // Fallback to first available global dir if no active config
              const roots = getSearchRoots();
              const globalRoot = roots.find(r => r.includes('.config') || r.includes('opencode'));
-             if (globalRoot) targetDir = path.join(globalRoot, 'skill', name);
+             if (globalRoot) targetDir = path.join(globalRoot, 'skills', name);
              else return res.status(404).json({ error: ERROR_CODES.NO_CONFIG_FOR_SKILL, code: 'NO_CONFIG_FOR_SKILL' });
         } else {
             targetDir = path.join(activeDir, name);
@@ -5443,7 +5438,7 @@ app.post('/api/presets/:id/apply', (req, res) => {
     const config = loadConfig() || {};
     const cp = getConfigPath();
     const configDir = path.dirname(cp);
-    const skillDir = path.join(configDir, 'skill');
+    const skillDir = path.join(configDir, 'skills');
     const pluginDir = path.join(configDir, 'plugin');
     
     // Skills
