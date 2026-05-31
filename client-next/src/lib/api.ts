@@ -776,6 +776,16 @@ export async function activateProfile(name: string): Promise<{ success: boolean 
   return data;
 }
 
+export async function duplicateProfile(name: string, newName?: string): Promise<{ success: boolean; newName: string; profiles: string[]; active: string | null }> {
+  const { data } = await api.post(`/profiles/${encodeURIComponent(name)}/duplicate`, { newName });
+  return data;
+}
+
+export async function renameProfile(name: string, newName: string): Promise<{ success: boolean; newName: string; profiles: string[]; active: string | null }> {
+  const { data } = await api.put(`/profiles/${encodeURIComponent(name)}`, { newName });
+  return data;
+}
+
 export async function getOhMyConfig(): Promise<OhMyConfigResponse> {
   const { data } = await api.get<OhMyConfigResponse>('/ohmyopencode');
   return data;

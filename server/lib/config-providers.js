@@ -92,6 +92,22 @@ const normalizePath = (inputPath) => {
     return path.normalize(path.resolve(inputPath));
 };
 
+const resolveRealPathSync = (inputPath) => {
+    const normalized = normalizePath(inputPath);
+    if (!normalized) return null;
+
+    try {
+        return normalizePath(fs.realpathSync(normalized));
+    } catch {
+        const parentDir = path.dirname(normalized);
+        try {
+            return normalizePath(path.join(fs.realpathSync(parentDir), path.basename(normalized)));
+        } catch {
+            return normalized;
+        }
+    }
+};
+
 const uniqNormalizedPaths = (paths) => {
     const normalized = [];
     const seen = new Set();
@@ -174,7 +190,7 @@ const parseJsonText = (text, { parseJsonc } = {}) => {
 const toAbsolutePath = (baseRoot, basename) => normalizePath(path.join(baseRoot, basename));
 
 const resolveRoots = ({ roots = [], customPaths = [] } = {}) => {
-    return uniqNormalizedPaths([...(roots || []), ...(customPaths || [])]);
+    return uniqNormalizedPaths([...(roots || []), ...(customPaths || [])].map(resolveRealPathSync));
 };
 
 const buildCandidatesForRule = (rule, roots) => {
@@ -272,9 +288,9 @@ const listOpenAgentProfilePaths = (provider) => {
 const createProviderDetectionResult = ({ id, displayName, candidates, existing, activePath, diagnostics = [] }) => ({
     id,
     displayName,
-    paths: candidates,
+    paths: uniqNormalizedPaths(candidates.map(resolveRealPathSync)),
     exists: !!activePath,
-    activePath: activePath || null,
+    activePath: resolveRealPathSync(activePath) || null,
     capabilities: defaultCapabilities(),
     diagnostics
 });
@@ -470,8 +486,9 @@ const resolveProviderWritePath = ({ provider, requestedPath } = {}) => {
     }
 
     if (typeof requestedPath === 'string' && requestedPath.trim().length > 0) {
-        const normalized = normalizePath(requestedPath);
-        if (!normalized || !provider.paths.includes(normalized)) {
+        const normalized = resolveRealPathSync(requestedPath);
+        const allowedPaths = uniqNormalizedPaths(provider.paths.map(resolveRealPathSync));
+        if (!normalized || !allowedPaths.includes(normalized)) {
             return {
                 ok: false,
                 diagnostics: [createDiagnostic({
@@ -485,7 +502,7 @@ const resolveProviderWritePath = ({ provider, requestedPath } = {}) => {
         return { ok: true, path: normalized };
     }
 
-    if (provider.activePath) return { ok: true, path: provider.activePath };
+    if (provider.activePath) return { ok: true, path: resolveRealPathSync(provider.activePath) };
 
     return {
         ok: false,

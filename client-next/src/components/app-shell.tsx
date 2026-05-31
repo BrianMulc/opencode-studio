@@ -10,9 +10,11 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Play, ExternalLink, Loader, Alert } from "@nsmr/pixelart-react";
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
+import { usePathname } from "next/navigation";
 
 const FIRST_LOAD_KEY = "opencode-studio-loaded";
 const LAUNCH_ATTEMPT_KEY = "opencode-studio-launch-attempt";
+const LAST_PATH_KEY = "opencode-studio-last-path";
 
 function useIsFirstLoad() {
   const [isFirst, setIsFirst] = useState(true);
@@ -167,6 +169,13 @@ function LoadingState({ isFirstLoad }: { isFirstLoad: boolean }) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { connected, loading } = useApp();
   const isFirstLoad = useIsFirstLoad();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (pathname && pathname !== "/") {
+      localStorage.setItem(LAST_PATH_KEY, pathname);
+    }
+  }, [pathname]);
 
   if (loading && !connected) {
     return <LoadingState isFirstLoad={isFirstLoad} />;

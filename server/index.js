@@ -772,8 +772,24 @@ const getSearchRoots = () => {
         roots.push(path.join(process.env.APPDATA, 'opencode'));
     }
 
-    // Filter nulls, duplicates and normalize
-    const unique = [...new Set(roots.filter(Boolean).map(p => path.resolve(p)))];
+    // Filter nulls, duplicates and normalize through real paths so Windows junctions collapse to their targets.
+    const unique = [];
+    const seen = new Set();
+    for (const root of roots.filter(Boolean)) {
+        const resolved = path.resolve(root);
+        let realRoot = resolved;
+        try {
+            realRoot = fs.realpathSync(resolved);
+        } catch {
+            // Keep unresolved roots so callers can still create missing config locations.
+        }
+
+        const normalized = path.normalize(realRoot);
+        const key = process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push(normalized);
+    }
     return unique;
 };
 
@@ -2240,8 +2256,11 @@ function compareExpectedRevision(targetPath, body = {}) {
 function validatePathWritable(pathToWrite) {
     try {
         const resolvedPath = path.resolve(pathToWrite);
+        let pathToCheck = resolvedPath;
+
         if (fs.existsSync(resolvedPath)) {
-            const stats = fs.lstatSync(resolvedPath);
+            pathToCheck = fs.realpathSync(resolvedPath);
+            const stats = fs.lstatSync(pathToCheck);
             if (stats.isSymbolicLink()) {
                 return {
                     ok: false,
@@ -2249,17 +2268,18 @@ function validatePathWritable(pathToWrite) {
                         severity: 'error',
                         code: 'UNSAFE_PROVIDER_PATH',
                         message: 'Refusing to write through symlink provider path',
-                        details: { path: resolvedPath }
+                        details: { path: pathToCheck }
                     }]
                 };
             }
-            fs.accessSync(resolvedPath, fs.constants.W_OK);
+            fs.accessSync(pathToCheck, fs.constants.W_OK);
             return { ok: true };
         }
 
         const parentDir = path.dirname(resolvedPath);
         fs.mkdirSync(parentDir, { recursive: true });
-        fs.accessSync(parentDir, fs.constants.W_OK);
+        const realParentDir = fs.realpathSync(parentDir);
+        fs.accessSync(realParentDir, fs.constants.W_OK);
         return { ok: true };
     } catch (error) {
         return {
@@ -2650,6 +2670,7 @@ app.post('/api/config-providers/:id/save', (req, res) => {
             path: pathDecision.path,
             exists: true,
             diagnostics: updatedProvider.diagnostics || [],
+            raw: writePayload.raw,
             revision: updatedDetails.revision || getCurrentRevisionForPath(pathDecision.path)
         });
     } catch (error) {
@@ -4772,6 +4793,10 @@ app.get('/api/profiles', (req, res) => {
 
 app.post('/api/profiles', (req, res) => {
     try {
+        const validation = profileManager.validateProfileName(req.body.name);
+        if (!validation.valid) {
+            return res.status(400).json({ error: validation.error });
+        }
         res.json(profileManager.createProfile(req.body.name));
     } catch (e) {
         res.status(400).json({ error: e.message, ...(e.code && { code: e.code }) });
@@ -4790,6 +4815,52 @@ app.post('/api/profiles/:name/activate', (req, res) => {
     try {
         res.json(profileManager.activateProfile(req.params.name));
     } catch (e) {
+        res.status(400).json({ error: e.message, ...(e.code && { code: e.code }) });
+    }
+});
+
+app.post('/api/profiles/:name/duplicate', (req, res) => {
+    try {
+        const name = decodeURIComponent(req.params.name);
+        let newName = req.body.newName;
+
+        if (!newName) {
+            const base = `${name}-copy`;
+            const { profiles } = profileManager.listProfiles();
+            let candidate = base;
+            let counter = 1;
+            while (profiles.includes(candidate)) {
+                candidate = `${base}-${counter}`;
+                counter++;
+            }
+            newName = candidate;
+        }
+
+        const result = profileManager.duplicateProfile(name, newName);
+        const { profiles, active } = profileManager.listProfiles();
+        res.json({ success: true, newName: result.newName, profiles, active });
+    } catch (e) {
+        if (e.message === 'Source profile not found') {
+            return res.status(404).json({ error: e.message });
+        }
+        res.status(400).json({ error: e.message, ...(e.code && { code: e.code }) });
+    }
+});
+
+app.put('/api/profiles/:name', (req, res) => {
+    try {
+        const name = decodeURIComponent(req.params.name);
+        const { newName } = req.body;
+        if (!newName || typeof newName !== 'string') {
+            return res.status(400).json({ error: 'New name is required' });
+        }
+        const result = profileManager.renameProfile(name, newName);
+        const { profiles, active } = profileManager.listProfiles();
+        res.json({ ...result, profiles, active });
+    } catch (e) {
+        if (e.message === 'Profile not found') {
+            return res.status(404).json({ error: e.message });
+        }
         res.status(400).json({ error: e.message, ...(e.code && { code: e.code }) });
     }
 });

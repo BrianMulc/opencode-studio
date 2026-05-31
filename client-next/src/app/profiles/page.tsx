@@ -27,8 +27,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Plus, Trash, Check, User, CardStack, Play } from "@nsmr/pixelart-react"
-import { getProfiles, createProfile, deleteProfile, activateProfile, type ProfileList } from "@/lib/api";
+import { Plus, Trash, Check, Edit, CardStack, Play, Copy } from "@nsmr/pixelart-react"
+import { getProfiles, createProfile, deleteProfile, activateProfile, renameProfile, duplicateProfile, type ProfileList } from "@/lib/api";
 import { PageHelp } from "@/components/page-help";
 
 export default function ProfilesPage() {
@@ -39,6 +39,12 @@ export default function ProfilesPage() {
   const [newProfileName, setNewProfileName] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [renamingTarget, setRenamingTarget] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [duplicatingTarget, setDuplicatingTarget] = useState<string | null>(null);
+  const [duplicateValue, setDuplicateValue] = useState("");
+  const [duplicating, setDuplicating] = useState(false);
   const [activating, setActivating] = useState<string | null>(null);
 
   const getErrorMessage = (err: unknown) => {
@@ -108,6 +114,40 @@ export default function ProfilesPage() {
     }
   };
 
+  const handleRename = async () => {
+    if (!renamingTarget || !renameValue.trim()) return;
+    try {
+      setRenaming(true);
+      const result = await renameProfile(renamingTarget, renameValue.trim());
+      toast.success(t('renameSuccess', { name: result.newName }));
+      setRenamingTarget(null);
+      setRenameValue("");
+      loadProfiles();
+    } catch (e) {
+      const msg = getErrorMessage(e);
+      toast.error(msg ? t('renameFailedWithError', { error: msg }) : t('renameFailed'));
+    } finally {
+      setRenaming(false);
+    }
+  };
+
+  const handleDuplicate = async () => {
+    if (!duplicatingTarget) return;
+    try {
+      setDuplicating(true);
+      const result = await duplicateProfile(duplicatingTarget, duplicateValue.trim() || undefined);
+      toast.success(t('duplicateSuccess', { name: result.newName }));
+      setDuplicatingTarget(null);
+      setDuplicateValue("");
+      loadProfiles();
+    } catch (e) {
+      const msg = getErrorMessage(e);
+      toast.error(msg ? t('duplicateFailedWithError', { error: msg }) : t('duplicateFailed'));
+    } finally {
+      setDuplicating(false);
+    }
+  };
+
   if (loading) {
     return <div className="p-8">{t('loading')}</div>;
   }
@@ -131,34 +171,34 @@ export default function ProfilesPage() {
           </p>
         </div>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger asChild>
-            <Button>
-               <Plus className="h-4 w-4 mr-2" />
-              {t('newProfile')}
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t('createTitle')}</DialogTitle>
-              <DialogDescription>
-                {t('createDescription')}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="py-4">
-              <Input
-                placeholder={t('namePlaceholder')}
-                value={newProfileName}
-                onChange={(e) => setNewProfileName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-              />
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setCreateOpen(false)}>{t('cancel')}</Button>
-              <Button onClick={handleCreate} disabled={!newProfileName.trim() || creating}>{t('create')}</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </header>
+<DialogTrigger asChild>
+             <Button>
+                <Plus className="h-4 w-4 mr-2" />
+               {t('newProfile')}
+             </Button>
+           </DialogTrigger>
+           <DialogContent>
+             <DialogHeader>
+               <DialogTitle>{t('createTitle')}</DialogTitle>
+               <DialogDescription>
+                 {t('createDescription')}
+               </DialogDescription>
+             </DialogHeader>
+             <div className="py-4">
+               <Input
+                 placeholder={t('namePlaceholder')}
+                 value={newProfileName}
+                 onChange={(e) => setNewProfileName(e.target.value)}
+                 onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+               />
+             </div>
+             <DialogFooter>
+               <Button variant="outline" onClick={() => setCreateOpen(false)}>{t('cancel')}</Button>
+               <Button onClick={handleCreate} disabled={!newProfileName.trim() || creating}>{t('create')}</Button>
+             </DialogFooter>
+           </DialogContent>
+          </Dialog>
+       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {data?.profiles.map((profile) => {
@@ -166,7 +206,7 @@ export default function ProfilesPage() {
           return (
             <Card key={profile} className={`hover-lift transition-all ${isActive ? 'border-primary shadow-md bg-primary/5' : ''}`}>
               <CardHeader className="pb-3">
-                <div className="flex justify-between items-start">
+                <div className="flex justify-between items-start gap-2">
                   <div className="flex items-center gap-2">
                     <div className={`p-2 rounded-md ${isActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
                       <CardStack className="h-5 w-5" />
@@ -176,38 +216,56 @@ export default function ProfilesPage() {
                       {isActive && <Badge className="mt-1">{t('active')}</Badge>}
                     </div>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="flex gap-2 mt-4">
-                  {isActive ? (
-                    <Button disabled className="w-full" variant="secondary">
-                       <Check className="h-4 w-4 mr-2" />
-                      {t('current')}
-                    </Button>
-                  ) : (
-                    <Button 
-                      className="w-full" 
-                      variant="outline" 
-                      onClick={() => handleActivate(profile)}
-                      disabled={activating === profile}
-                    >
-                       <Play className="h-4 w-4 mr-2" />
-                      {t('switch')}
-                    </Button>
-                  )}
-                  
-                  {profile !== 'default' && !isActive && (
+                  <div className="flex items-center gap-1 shrink-0">
                     <Button 
                       variant="ghost" 
                       size="icon" 
-                      className="text-muted-foreground hover:text-destructive"
-                      onClick={() => setDeleteTarget(profile)}
+                      className="text-muted-foreground hover:text-foreground h-8 w-8"
+                      onClick={() => { setRenamingTarget(profile); setRenameValue(profile); }}
+                      title={t('rename')}
                     >
-                      <Trash className="h-4 w-4" />
+                      <Edit className="h-4 w-4" />
                     </Button>
-                  )}
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="text-muted-foreground hover:text-foreground h-8 w-8"
+                      onClick={() => { setDuplicatingTarget(profile); setDuplicateValue(""); }}
+                      title={t('duplicate')}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                    {profile !== 'default' && !isActive && (
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="text-muted-foreground hover:text-destructive h-8 w-8"
+                        onClick={() => setDeleteTarget(profile)}
+                        title={t('deleteBtn')}
+                      >
+                        <Trash className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
+              </CardHeader>
+              <CardContent>
+                {isActive ? (
+                  <Button disabled className="w-full" variant="secondary">
+                     <Check className="h-4 w-4 mr-2" />
+                    {t('current')}
+                  </Button>
+                ) : (
+                  <Button 
+                    className="w-full" 
+                    variant="outline" 
+                    onClick={() => handleActivate(profile)}
+                    disabled={activating === profile}
+                  >
+                     <Play className="h-4 w-4 mr-2" />
+                    {t('switch')}
+                  </Button>
+                )}
               </CardContent>
             </Card>
           );
@@ -230,6 +288,52 @@ export default function ProfilesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+<Dialog open={!!renamingTarget} onOpenChange={(open) => { if (!open) { setRenamingTarget(null); setRenameValue(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('renameTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('renameDescription')}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Input
+              placeholder={t('renamePlaceholder')}
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleRename()}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRenamingTarget(null); setRenameValue(""); }}>{t('cancel')}</Button>
+            <Button onClick={handleRename} disabled={!renameValue.trim() || renaming}>{t('rename')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!duplicatingTarget} onOpenChange={(open) => { if (!open) { setDuplicatingTarget(null); setDuplicateValue(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('duplicateTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('duplicateDescription')}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Input
+              placeholder={t('duplicatePlaceholder')}
+              value={duplicateValue}
+              onChange={(e) => setDuplicateValue(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleDuplicate()}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDuplicatingTarget(null); setDuplicateValue(""); }}>{t('cancel')}</Button>
+            <Button onClick={handleDuplicate} disabled={duplicating}>{t('duplicate')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -30,8 +30,8 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const navItems = [
-  { href: "/mcp", label: "nav.mcpServers", icon: Server },
   { href: "/profiles", label: "nav.profiles", icon: CardStack },
+  { href: "/mcp", label: "nav.mcpServers", icon: Server },
   { href: "/skills", label: "nav.skills", icon: Gamepad },
   { href: "/plugins", label: "nav.plugins", icon: Code },
   { href: "/commands", label: "nav.commands", icon: Command },
