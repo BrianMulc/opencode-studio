@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ScrollablePanel, type ScrollablePanelRef } from "@/components/ui/scrollable-panel";
 import { getApiBaseUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Pause, Play, Trash, ArrowDown } from "@nsmr/pixelart-react";
@@ -23,7 +24,7 @@ export default function LogsPage() {
   const [paused, setPaused] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
   const [filter, setFilter] = useState<LogFilter>("all");
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const scrollableRef = useRef<ScrollablePanelRef>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
@@ -59,12 +60,6 @@ export default function LogsPage() {
       eventSourceRef.current?.close();
     };
   }, [paused]);
-
-  useEffect(() => {
-    if (!autoScroll) return;
-    if (!containerRef.current) return;
-    containerRef.current.scrollTop = containerRef.current.scrollHeight;
-  }, [logs, autoScroll]);
 
   const filtered = useMemo(() => {
     if (filter === "all") return logs;
@@ -107,9 +102,10 @@ export default function LogsPage() {
         </div>
       </div>
 
-      <div
-        ref={containerRef}
-        className="h-[70vh] overflow-y-auto rounded-md border border-border bg-background px-4 py-3 font-mono text-xs"
+      <ScrollablePanel
+        ref={scrollableRef}
+        autoScroll={autoScroll}
+        className="h-[70vh] rounded-md border border-border bg-background px-4 py-3 font-mono text-xs"
       >
         {filtered.length === 0 ? (
           <div className="text-muted-foreground">{t('noEntries')}</div>
@@ -132,7 +128,7 @@ export default function LogsPage() {
             </div>
           ))
         )}
-      </div>
+      </ScrollablePanel>
     </div>
   );
 }

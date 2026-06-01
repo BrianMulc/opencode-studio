@@ -2390,6 +2390,8 @@ function loadProviderDetails(provider) {
     }
 }
 
+let lastSelectedOpenAgentProfilePath = null;
+
 function requireOpenAgentProvider(provider) {
     if (!provider) {
         return {
@@ -2444,7 +2446,28 @@ function listOpenAgentProfiles(provider) {
     const activePath = configProviders.getOpenAgentDefaultActivePath(provider);
     const activeRevision = getCurrentRevisionForPath(activePath);
     const profilePaths = configProviders.listOpenAgentProfilePaths(provider);
-    return profilePaths.map((profilePath) => buildOpenAgentProfileRecord(provider, profilePath, activeRevision));
+    const profiles = profilePaths.map((profilePath) => buildOpenAgentProfileRecord(provider, profilePath, activeRevision));
+
+    // When multiple profiles have identical content to the active file, only one should be marked active.
+    // Prefer the explicitly selected profile; otherwise use the most recently modified as a tie-breaker.
+    const activeProfiles = profiles.filter((p) => p.active);
+    if (activeProfiles.length > 1) {
+        let winner = lastSelectedOpenAgentProfilePath
+            ? activeProfiles.find((p) => p.path === lastSelectedOpenAgentProfilePath)
+            : undefined;
+        if (!winner) {
+            winner = activeProfiles.reduce((a, b) =>
+                (b.revision?.mtimeMs ?? 0) > (a.revision?.mtimeMs ?? 0) ? b : a
+            );
+        }
+        for (const profile of profiles) {
+            if (profile.active && profile.path !== winner.path) {
+                profile.active = false;
+            }
+        }
+    }
+
+    return profiles;
 }
 
 function resolveOpenAgentProfileSelection(provider, body = {}) {
@@ -2538,6 +2561,77 @@ app.get('/api/config-providers/:id/profiles', (req, res) => {
     }
 });
 
+app.get('/api/config-providers/:id/profiles/:name/content', (req, res) => {
+    try {
+        const provider = getProviderByIdOrNull(req.params.id);
+        const guard = requireOpenAgentProvider(provider);
+        if (!guard.ok) return res.status(guard.status).json(guard.payload);
+
+        const profilePath = configProviders.getOpenAgentProfilePath(provider, req.params.name);
+        if (!profilePath || !fs.existsSync(profilePath)) {
+            return res.status(404).json({ error: 'Profile not found' });
+        }
+
+        const raw = configProviders.readConfigTextSync(profilePath, 'utf8');
+        const stats = fs.statSync(profilePath);
+        const revision = configProviders.buildContentRevision({ content: raw, stats });
+        res.json({ success: true, name: req.params.name, path: profilePath, raw, revision });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/config-providers/:id/profiles/:name/save', (req, res) => {
+    try {
+        const provider = getProviderByIdOrNull(req.params.id);
+        const guard = requireOpenAgentProvider(provider);
+        if (!guard.ok) return res.status(guard.status).json(guard.payload);
+
+        const profilePath = configProviders.getOpenAgentProfilePath(provider, req.params.name);
+        if (!profilePath) {
+            return res.status(400).json({
+                success: false,
+                diagnostics: [{
+                    severity: 'error',
+                    code: 'OPENAGENT_PROFILE_NAME_INVALID',
+                    message: 'Invalid profile name'
+                }]
+            });
+        }
+
+        const parsed = parseAndValidateProviderPayload(provider, req.body || {});
+        if (!parsed.ok) {
+            return res.status(400).json({ success: false, diagnostics: parsed.diagnostics });
+        }
+
+        const pathSafety = validatePathWritable(profilePath);
+        if (!pathSafety.ok) {
+            return res.status(400).json({ success: false, diagnostics: pathSafety.diagnostics });
+        }
+
+        configProviders.writeConfigTextAtomicSync(profilePath, parsed.raw, 'utf8');
+
+        const activePath = configProviders.getOpenAgentDefaultActivePath(provider);
+        if (activePath) {
+            const activeSafety = validatePathWritable(activePath);
+            if (activeSafety.ok) {
+                configProviders.writeConfigTextAtomicSync(activePath, parsed.raw, 'utf8');
+            }
+        }
+
+        lastSelectedOpenAgentProfilePath = profilePath;
+        const updatedProvider = getProviderByIdOrNull(provider.id) || provider;
+        res.json({
+            success: true,
+            selectedPath: profilePath,
+            path: activePath,
+            profiles: listOpenAgentProfiles(updatedProvider)
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.post('/api/config-providers/:id/profiles', (req, res) => {
     try {
         const provider = getProviderByIdOrNull(req.params.id);
@@ -2585,6 +2679,8 @@ app.post('/api/config-providers/:id/profiles/switch', (req, res) => {
         const selected = resolveOpenAgentProfileSelection(provider, req.body || {});
         if (!selected.ok) return res.status(400).json({ success: false, diagnostics: selected.diagnostics });
 
+        lastSelectedOpenAgentProfilePath = selected.path;
+
         const raw = configProviders.readConfigTextSync(selected.path, 'utf8');
         const parsed = parseAndValidateProviderPayload(provider, { raw });
         if (!parsed.ok) return res.status(400).json({ success: false, diagnostics: parsed.diagnostics });
@@ -2602,6 +2698,81 @@ app.post('/api/config-providers/:id/profiles/switch', (req, res) => {
             selectedPath: selected.path,
             diagnostics: updatedDetails.diagnostics || [],
             revision: updatedDetails.revision,
+            profiles: listOpenAgentProfiles(updatedProvider)
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/config-providers/:id/profiles/:name/rename', (req, res) => {
+    try {
+        const provider = getProviderByIdOrNull(req.params.id);
+        const guard = requireOpenAgentProvider(provider);
+        if (!guard.ok) return res.status(guard.status).json(guard.payload);
+
+        const oldPath = configProviders.getOpenAgentProfilePath(provider, req.params.name);
+        const newName = req.body?.newName;
+        const newPath = configProviders.getOpenAgentProfilePath(provider, newName);
+
+        if (!oldPath || !fs.existsSync(oldPath)) {
+            return res.status(404).json({ error: 'Profile not found' });
+        }
+        if (!newPath) {
+            return res.status(400).json({ success: false, diagnostics: [{ severity: 'error', code: 'OPENAGENT_PROFILE_NAME_INVALID', message: 'Invalid new profile name' }] });
+        }
+        if (fs.existsSync(newPath)) {
+            return res.status(409).json({ success: false, diagnostics: [{ severity: 'error', code: 'OPENAGENT_PROFILE_EXISTS', message: 'A profile with that name already exists' }] });
+        }
+
+        const raw = configProviders.readConfigTextSync(oldPath, 'utf8');
+        fs.writeFileSync(newPath, raw, 'utf8');
+        fs.unlinkSync(oldPath);
+
+        if (lastSelectedOpenAgentProfilePath === oldPath) {
+            lastSelectedOpenAgentProfilePath = newPath;
+        }
+
+        const updatedProvider = getProviderByIdOrNull(provider.id) || provider;
+        const updatedDetails = loadProviderDetails(updatedProvider);
+        res.json({
+            success: true,
+            path: newPath,
+            selectedPath: newPath,
+            diagnostics: updatedDetails.diagnostics || [],
+            revision: updatedDetails.revision,
+            profiles: listOpenAgentProfiles(updatedProvider)
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.delete('/api/config-providers/:id/profiles/:name', (req, res) => {
+    try {
+        const provider = getProviderByIdOrNull(req.params.id);
+        const guard = requireOpenAgentProvider(provider);
+        if (!guard.ok) return res.status(guard.status).json(guard.payload);
+
+        const profilePath = configProviders.getOpenAgentProfilePath(provider, req.params.name);
+        if (!profilePath || !fs.existsSync(profilePath)) {
+            return res.status(404).json({ error: 'Profile not found' });
+        }
+
+        const pathSafety = validatePathWritable(profilePath);
+        if (!pathSafety.ok) {
+            return res.status(400).json({ success: false, diagnostics: pathSafety.diagnostics });
+        }
+
+        fs.unlinkSync(profilePath);
+
+        if (lastSelectedOpenAgentProfilePath === profilePath) {
+            lastSelectedOpenAgentProfilePath = null;
+        }
+
+        const updatedProvider = getProviderByIdOrNull(provider.id) || provider;
+        res.json({
+            success: true,
             profiles: listOpenAgentProfiles(updatedProvider)
         });
     } catch (error) {

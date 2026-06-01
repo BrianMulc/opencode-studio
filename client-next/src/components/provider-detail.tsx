@@ -41,6 +41,10 @@ import {
   getConfigProviderProfiles,
   createConfigProviderProfile,
   switchConfigProviderProfile,
+  getConfigProviderProfileContent,
+  saveConfigProviderProfile,
+  deleteConfigProviderProfile,
+  renameConfigProviderProfile,
 } from "@/lib/api";
 
 function severityVariant(severity: ConfigProviderDiagnostic["severity"]): "destructive" | "secondary" | "default" {
@@ -112,14 +116,18 @@ export function ProviderDetailPanel({ providerId, onBack, onRefresh }: ProviderD
   const [switchingProfile, setSwitchingProfile] = useState(false);
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [profileName, setProfileName] = useState("");
+  const [editingProfile, setEditingProfile] = useState<ConfigProviderProfile | null>(null);
+  const [showRenameDialog, setShowRenameDialog] = useState(false);
+  const [renameName, setRenameName] = useState("");
 
   const isOpenAgent = providerId === "oh-my-openagent";
 
-  const loadProfiles = useCallback(async () => {
+  const loadProfiles = useCallback(async (preferredPath?: string) => {
     if (!isOpenAgent) {
       setProfiles([]);
       setProfileDir(null);
       setSelectedProfilePath("");
+      setEditingProfile(null);
       return;
     }
 
@@ -127,7 +135,14 @@ export function ProviderDetailPanel({ providerId, onBack, onRefresh }: ProviderD
     setProfiles(result.profiles ?? []);
     setProfileDir(result.profileDir ?? null);
     const activeProfile = result.profiles?.find((profile) => profile.active);
-    setSelectedProfilePath(activeProfile?.path ?? result.profiles?.[0]?.path ?? "");
+    if (preferredPath) {
+      const preferred = result.profiles?.find((p) => p.path === preferredPath);
+      setSelectedProfilePath(preferred?.path ?? activeProfile?.path ?? result.profiles?.[0]?.path ?? "");
+      setEditingProfile(preferred ?? activeProfile ?? result.profiles?.[0] ?? null);
+    } else {
+      setSelectedProfilePath(activeProfile?.path ?? result.profiles?.[0]?.path ?? "");
+      setEditingProfile(activeProfile ?? result.profiles?.[0] ?? null);
+    }
   }, [isOpenAgent, providerId]);
 
   const loadDetail = useCallback(async () => {
@@ -194,16 +209,28 @@ export function ProviderDetailPanel({ providerId, onBack, onRefresh }: ProviderD
     if (hasErrors) return;
     try {
       setSaving(true);
-      const result = await saveConfigProvider(providerId, {
-        raw: rawText,
-        expectedRevision: detail?.revision?.hash ?? undefined,
-      });
-      setDiagnostics(result.diagnostics ?? []);
-      setHasChanges(false);
-      setStaleWriteWarning(false);
-      toast.success("Provider config saved");
-      await loadDetail();
-      onRefresh();
+      if (editingProfile) {
+        const savedProfile = await saveConfigProviderProfile(providerId, editingProfile.name, { raw: rawText });
+        if (savedProfile) {
+          setHasChanges(false);
+          setStaleWriteWarning(false);
+          toast.success("Profile saved and activated");
+          await loadDetail();
+          await loadProfiles(savedProfile.path);
+          onRefresh();
+        }
+      } else {
+        const result = await saveConfigProvider(providerId, {
+          raw: rawText,
+          expectedRevision: detail?.revision?.hash ?? undefined,
+        });
+        setDiagnostics(result.diagnostics ?? []);
+        setHasChanges(false);
+        setStaleWriteWarning(false);
+        toast.success("Provider config saved");
+        await loadDetail();
+        onRefresh();
+      }
     } catch (err: unknown) {
       if (err && typeof err === "object" && "response" in err) {
         const axiosErr = err as { response?: { status?: number; data?: unknown } };
@@ -341,6 +368,7 @@ export function ProviderDetailPanel({ providerId, onBack, onRefresh }: ProviderD
       });
       setProfiles(result.profiles ?? []);
       setSelectedProfilePath(result.profile.path);
+      setEditingProfile(result.profile);
       setShowProfileDialog(false);
       setProfileName("");
       toast.success("OpenAgent config profile created");
@@ -354,6 +382,31 @@ export function ProviderDetailPanel({ providerId, onBack, onRefresh }: ProviderD
     }
   };
 
+  const handleProfileSelect = async (path: string) => {
+    setSelectedProfilePath(path);
+    const profile = profiles.find((p) => p.path === path);
+    if (!profile) {
+      setEditingProfile(null);
+      await loadDetail();
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setEditingProfile(profile);
+      const result = await getConfigProviderProfileContent(providerId, profile.name);
+      setRawText(result.raw);
+      setHasChanges(false);
+      setDiagnostics([]);
+      setStaleWriteWarning(false);
+    } catch {
+      toast.error("Failed to load profile content");
+      setEditingProfile(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSwitchProfile = async () => {
     if (!selectedProfilePath || hasChanges) return;
     try {
@@ -363,6 +416,7 @@ export function ProviderDetailPanel({ providerId, onBack, onRefresh }: ProviderD
       setDiagnostics(result.diagnostics ?? []);
       toast.success("OpenAgent config switched");
       await loadDetail();
+      await loadProfiles(result.selectedPath);
       onRefresh();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { diagnostics?: ConfigProviderDiagnostic[]; message?: string } } };
@@ -371,6 +425,47 @@ export function ProviderDetailPanel({ providerId, onBack, onRefresh }: ProviderD
       toast.error(axiosErr.response?.data?.message ?? "Failed to switch OpenAgent config");
     } finally {
       setSwitchingProfile(false);
+    }
+  };
+
+  const handleDeleteProfile = async () => {
+    if (!editingProfile) return;
+    try {
+      setSaving(true);
+      await deleteConfigProviderProfile(providerId, editingProfile.name);
+      setEditingProfile(null);
+      setSelectedProfilePath("");
+      toast.success("Profile deleted");
+      await loadDetail();
+      await loadProfiles();
+      onRefresh();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string } } };
+      toast.error(axiosErr.response?.data?.message ?? "Failed to delete profile");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRenameProfile = async () => {
+    if (!editingProfile || !renameName.trim()) return;
+    try {
+      setSaving(true);
+      const result = await renameConfigProviderProfile(providerId, editingProfile.name, renameName.trim());
+      setProfiles(result.profiles ?? []);
+      setShowRenameDialog(false);
+      setRenameName("");
+      toast.success("Profile renamed");
+      await loadDetail();
+      await loadProfiles(result.selectedPath);
+      onRefresh();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { diagnostics?: ConfigProviderDiagnostic[]; message?: string } } };
+      const backendDiagnostics = axiosErr.response?.data?.diagnostics;
+      if (backendDiagnostics) setDiagnostics(backendDiagnostics);
+      toast.error(axiosErr.response?.data?.message ?? "Failed to rename profile");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -513,7 +608,7 @@ export function ProviderDetailPanel({ providerId, onBack, onRefresh }: ProviderD
                 <div className="space-y-1">
                   <Label className="text-sm font-medium">OpenAgent Config Profiles</Label>
                   <p className="text-xs text-muted-foreground">
-                    Save named OpenAgent config files and switch the active plugin config by copying one into place.
+                    Select a profile to edit. Save writes to the selected profile and activates it. Save As creates a new profile from the editor content.
                     {profileDir && <code className="ml-1 rounded bg-muted px-1 py-0.5 font-mono">{profileDir}</code>}
                   </p>
                 </div>
@@ -524,11 +619,11 @@ export function ProviderDetailPanel({ providerId, onBack, onRefresh }: ProviderD
                   data-testid="openagent-profile-create"
                 >
                   <Plus className="h-3 w-3 mr-1" />
-                  Save as Profile
+                  Save As
                 </Button>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row">
-                <Select value={selectedProfilePath} onValueChange={setSelectedProfilePath} disabled={profiles.length === 0}>
+                <Select value={selectedProfilePath} onValueChange={handleProfileSelect} disabled={profiles.length === 0}>
                   <SelectTrigger data-testid="openagent-profile-select">
                     <SelectValue placeholder="No saved profiles" />
                   </SelectTrigger>
@@ -542,16 +637,33 @@ export function ProviderDetailPanel({ providerId, onBack, onRefresh }: ProviderD
                 </Select>
                 <Button
                   variant="outline"
+                  size="sm"
                   onClick={handleSwitchProfile}
                   disabled={!selectedProfilePath || hasChanges || switchingProfile}
                   data-testid="openagent-profile-switch"
                 >
-                  {switchingProfile ? "Switching..." : "Switch Active Config"}
+                  {switchingProfile ? "Switching..." : "Switch Profile"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setShowRenameDialog(true); setRenameName(editingProfile?.name ?? ""); }}
+                  disabled={!editingProfile || saving}
+                  data-testid="openagent-profile-rename"
+                >
+                  Rename
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={handleDeleteProfile}
+                  disabled={!editingProfile || saving}
+                  data-testid="openagent-profile-delete"
+                >
+                  Delete
                 </Button>
               </div>
-              {hasChanges && (
-                <p className="text-xs text-muted-foreground">Save or reload the current edits before switching profiles.</p>
-              )}
             </div>
           )}
 
@@ -571,7 +683,7 @@ export function ProviderDetailPanel({ providerId, onBack, onRefresh }: ProviderD
                 <Button
                   size="sm"
                   onClick={handleSave}
-                  disabled={saving || !hasChanges || hasErrors || staleWriteWarning}
+                  disabled={saving || (!hasChanges && !editingProfile) || hasErrors || staleWriteWarning}
                   data-testid="provider-save"
                 >
                   {saving ? "Saving..." : (
@@ -727,9 +839,9 @@ export function ProviderDetailPanel({ providerId, onBack, onRefresh }: ProviderD
       <Dialog open={showProfileDialog} onOpenChange={setShowProfileDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Save OpenAgent Config Profile</DialogTitle>
+            <DialogTitle>Save As New Profile</DialogTitle>
             <DialogDescription>
-              Create a named copy from the current editor content.
+              Create a new profile from the current editor content.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-4">
@@ -751,6 +863,38 @@ export function ProviderDetailPanel({ providerId, onBack, onRefresh }: ProviderD
               data-testid="openagent-profile-create-confirm"
             >
               {saving ? "Saving..." : "Save Profile"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showRenameDialog} onOpenChange={setShowRenameDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Profile</DialogTitle>
+            <DialogDescription>
+              Rename the selected profile.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-4">
+            <Label>New Name</Label>
+            <Input
+              value={renameName}
+              onChange={(event) => setRenameName(event.target.value)}
+              placeholder="work, personal, experimental"
+              data-testid="openagent-rename-name"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRenameDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRenameProfile}
+              disabled={!renameName.trim() || saving}
+              data-testid="openagent-rename-confirm"
+            >
+              {saving ? "Renaming..." : "Rename"}
             </Button>
           </DialogFooter>
         </DialogContent>

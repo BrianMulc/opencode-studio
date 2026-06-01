@@ -518,6 +518,26 @@ export async function switchConfigProviderProfile(id: ConfigProviderId, payload:
   return data;
 }
 
+export async function getConfigProviderProfileContent(id: ConfigProviderId, name: string): Promise<{ success: boolean; name: string; path: string; raw: string; revision: ConfigProviderRevision }> {
+  const { data } = await api.get<{ success: boolean; name: string; path: string; raw: string; revision: ConfigProviderRevision }>(configProviderRoute(id, `/profiles/${encodeURIComponent(name)}/content`));
+  return data;
+}
+
+export async function saveConfigProviderProfile(id: ConfigProviderId, name: string, payload: { raw: string }): Promise<ConfigProviderSwitchProfileResult> {
+  const { data } = await api.post<ConfigProviderSwitchProfileResult>(configProviderRoute(id, `/profiles/${encodeURIComponent(name)}/save`), payload);
+  return data;
+}
+
+export async function deleteConfigProviderProfile(id: ConfigProviderId, name: string): Promise<{ success: boolean; profiles: ConfigProviderProfile[] }> {
+  const { data } = await api.delete<{ success: boolean; profiles: ConfigProviderProfile[] }>(configProviderRoute(id, `/profiles/${encodeURIComponent(name)}`));
+  return data;
+}
+
+export async function renameConfigProviderProfile(id: ConfigProviderId, name: string, newName: string): Promise<ConfigProviderSwitchProfileResult> {
+  const { data } = await api.post<ConfigProviderSwitchProfileResult>(configProviderRoute(id, `/profiles/${encodeURIComponent(name)}/rename`), { newName });
+  return data;
+}
+
 export async function getAuthInfo(): Promise<AuthInfo> {
   const { data } = await api.get<AuthInfo>('/auth');
   return data;
