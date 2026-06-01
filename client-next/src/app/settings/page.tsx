@@ -29,7 +29,6 @@ import { PageHelp } from "@/components/page-help";
 import { toast } from "sonner";
 import Editor from "@monaco-editor/react";
 import { useTheme } from "next-themes";
-import { SincronizadoCard } from "@/components/sincronizado-card";
 import type { OpencodeConfig, GitHubBackupStatus } from "@/types";
 
 const THEMES = ["dark", "light", "auto"] as const;
@@ -61,7 +60,6 @@ export default function SettingsPage() {
     permissions: false,
     prompts: false,
     backup: false,
-    sincronizado: false,
   });
   
 const [systemPrompt, setSystemPrompt] = useState("");
@@ -591,10 +589,6 @@ const [systemPrompt, setSystemPrompt] = useState("");
           </CollapsibleContent>
         </Card>
        </Collapsible>
-
-      <Collapsible open={openSections.sincronizado} onOpenChange={() => toggleSection("sincronizado")}>
-        <SincronizadoCard />
-      </Collapsible>
 
     </div>
   );

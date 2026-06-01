@@ -112,13 +112,7 @@
       "used": "{count} used",
       "remaining": "{count} remaining"
     },
-    "sync": {
-      "title": "Sincronizado",
-      "description": "Hyper-local development stack with remote AI execution",
-      "body": "Sincronizado bridges local editing with remote AI execution on VPS. Perfect for development workflows with OpenCode or Claude Code.",
-      "viewRepository": "View Repository",
-      "documentation": "Documentation"
-    },
+
     "accountPool": {
       "ready": "Ready",
       "noAccounts": "No accounts in pool",

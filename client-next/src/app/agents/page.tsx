@@ -215,7 +215,7 @@ export default function AgentsPage() {
       {loading ? (
         <div className="text-sm text-muted-foreground">{t('loading')}</div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 pb-4">
           {filteredAgents.map((agent) => (
             <AgentCard
               key={`${agent.source}-${agent.name}`}

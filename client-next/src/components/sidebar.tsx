@@ -3,12 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Server, Gamepad, Code, Sliders, File, Lock, Command, Forward, Circle, Play, Power, ChartBar, Github, CardStack, List } from "@nsmr/pixelart-react";
+import { Server, Gamepad, Code, Sliders, File, Lock, Command, Forward, Circle, Play, Power, ChartBar, CardStack, List } from "@nsmr/pixelart-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { LanguageSwitcher } from "@/components/language-switcher";
+
 import { useApp } from "@/lib/context";
 import { PROTOCOL_URL, shutdownBackend } from "@/lib/api";
 import { useTranslations } from "next-intl";
@@ -188,20 +188,7 @@ export function Sidebar() {
                 </TooltipContent>
               </Tooltip>
             )}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" asChild>
-                  <a href="https://github.com/Microck/opencode-studio" target="_blank" rel="noopener noreferrer">
-                    <Github className="h-4 w-4" />
-                  </a>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{t('tooltips.github')}</p>
-              </TooltipContent>
-            </Tooltip>
             <ThemeToggle />
-            <LanguageSwitcher />
           </div>
         </div>
 

@@ -263,7 +263,7 @@ export default function CommandsPage() {
       {commands.length === 0 ? (
         <p className="text-muted-foreground italic">{t('noCommands')}</p>
       ) : (
-        <div className="grid grid-cols-1 gap-4">
+        <div className="grid grid-cols-1 gap-4 pb-4">
           {commands.map((cmd) => (
             <Card key={cmd.name}>
               <CardHeader className="pb-2">

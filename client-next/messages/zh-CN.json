@@ -112,13 +112,7 @@
       "used": "\u5df2\u4f7f\u7528 {count}",
       "remaining": "\u5269\u4f59 {count}"
     },
-    "sync": {
-      "title": "Sincronizado",
-      "description": "\u672c\u5730\u5f00\u53d1\u6808\u642d\u914d\u8fdc\u7a0b AI \u6267\u884c",
-      "body": "Sincronizado \u5c06\u672c\u5730\u7f16\u8f91\u4e0e VPS \u4e0a\u7684\u8fdc\u7a0b AI \u6267\u884c\u6865\u63a5\u3002\u975e\u5e38\u9002\u5408\u914d\u5408 OpenCode \u6216 Claude Code \u7684\u5f00\u53d1\u5de5\u4f5c\u6d41\u3002",
-      "viewRepository": "\u67e5\u770b\u4ed3\u5e93",
-      "documentation": "\u6587\u6863"
-    },
+
     "accountPool": {
       "ready": "\u5c31\u7eea",
       "noAccounts": "\u6c60\u4e2d\u65e0\u8d26\u6237",

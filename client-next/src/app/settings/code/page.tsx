@@ -101,7 +101,7 @@ export default function CodeSettingsPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-4">
       <PageHelp title={t('code.pageTitle')} docUrl="https://opencode.ai/docs" docTitle={t('code.pageDocTitle')} />
 
       <Card>

@@ -630,7 +630,10 @@ export function ProviderDetailPanel({ providerId, onBack, onRefresh }: ProviderD
                   <SelectContent>
                     {profiles.map((profile) => (
                       <SelectItem key={profile.path} value={profile.path}>
-                        {profile.name}{profile.active ? " (active)" : ""}
+                        <span className="flex items-center gap-2">
+                          {profile.name}
+                          {profile.active && <Check className="h-3.5 w-3.5 text-green-500" />}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
