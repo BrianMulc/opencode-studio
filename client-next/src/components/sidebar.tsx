@@ -36,6 +36,7 @@ const navItems = [
   { href: "/plugins", label: "nav.plugins", icon: Code },
   { href: "/commands", label: "nav.commands", icon: Command },
   { href: "/agents", label: "nav.agents", icon: List },
+  { href: "/custom-harness", label: "nav.customHarness", icon: CardStack },
   { href: "/logs", label: "nav.logs", icon: File },
   { href: "/rules", label: "nav.rules", icon: Sliders },
   { href: "/settings/code", label: "nav.codeSettings", icon: Code },

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { OpencodeConfig, SkillFile, PluginFile, SkillInfo, PluginInfo, AuthInfo, AuthProvider, StudioConfig, PluginModelsConfig, AuthProfilesInfo, Preset, PresetConfig, AgentConfig, AgentInfo, AgentsResponse, SystemToolInfo, RulesResponse, MCPConfig, OhMyPreferences, OhMyConfigResponse, GitHubBackupStatus, GitHubBackupResult, GitHubBackupConfig, ConfigProviderId, ConfigProviderCreatePayload, ConfigProviderCreateProfilePayload, ConfigProviderCreateProfileResult, ConfigProviderCreateResult, ConfigProviderDetail, ConfigProviderExportResult, ConfigProviderImportPayload, ConfigProviderImportResult, ConfigProviderProfilesResult, ConfigProviderSavePayload, ConfigProviderSaveResult, ConfigProviderSummary, ConfigProviderSwitchProfilePayload, ConfigProviderSwitchProfileResult, ConfigProviderValidationPayload, ConfigProviderValidationResult } from '@/types';
+import type { OpencodeConfig, SkillFile, PluginFile, SkillInfo, PluginInfo, AuthInfo, AuthProvider, StudioConfig, PluginModelsConfig, AuthProfilesInfo, Preset, PresetConfig, AgentConfig, AgentInfo, AgentsResponse, SystemToolInfo, RulesResponse, MCPConfig, OhMyPreferences, OhMyConfigResponse, GitHubBackupStatus, GitHubBackupResult, GitHubBackupConfig, ConfigProviderId, ConfigProviderCreatePayload, ConfigProviderCreateProfilePayload, ConfigProviderCreateProfileResult, ConfigProviderCreateResult, ConfigProviderDetail, ConfigProviderExportResult, ConfigProviderImportPayload, ConfigProviderImportResult, ConfigProviderProfilesResult, ConfigProviderSavePayload, ConfigProviderSaveResult, ConfigProviderSummary, ConfigProviderSwitchProfilePayload, ConfigProviderSwitchProfileResult, ConfigProviderValidationPayload, ConfigProviderValidationResult, ConfigProviderRevision, ConfigProviderProfile } from '@/types';
 
 const BACKEND_BASE_PORT = 1920;
 const MAX_PORT_TRIES = 10;
@@ -803,6 +803,67 @@ export async function duplicateProfile(name: string, newName?: string): Promise<
 
 export async function renameProfile(name: string, newName: string): Promise<{ success: boolean; newName: string; profiles: string[]; active: string | null }> {
   const { data } = await api.put(`/profiles/${encodeURIComponent(name)}`, { newName });
+  return data;
+}
+
+export interface CustomHarnessProfile {
+  name: string;
+  createdAt: string | null;
+  source: string | null;
+  hasSource: boolean;
+  hasConfig: boolean;
+  path: string;
+}
+
+export interface CustomHarnessProfileList {
+  profiles: CustomHarnessProfile[];
+}
+
+export async function getCustomHarnessProfiles(): Promise<CustomHarnessProfileList> {
+  const { data } = await api.get<CustomHarnessProfileList>('/custom-harness/list');
+  return data;
+}
+
+export async function createCustomHarnessProfile(name: string, source: 'latest' | 'copy-existing'): Promise<{ ok: boolean; profile: CustomHarnessProfile }> {
+  const { data } = await api.post<{ ok: boolean; profile: CustomHarnessProfile }>('/custom-harness/create', { name, source });
+  return data;
+}
+
+export async function deleteCustomHarnessProfile(name: string): Promise<{ ok: boolean; name: string }> {
+  const { data } = await api.delete<{ ok: boolean; name: string }>(`/custom-harness/${encodeURIComponent(name)}`);
+  return data;
+}
+
+export async function getCustomHarnessProfile(name: string): Promise<{ ok: boolean; profile: CustomHarnessProfile }> {
+  const { data } = await api.get<{ ok: boolean; profile: CustomHarnessProfile }>(`/custom-harness/${encodeURIComponent(name)}`);
+  return data;
+}
+
+export async function getCustomHarnessConfig(name: string): Promise<{ ok: boolean; config: Record<string, unknown>; path: string }> {
+  const { data } = await api.get<{ ok: boolean; config: Record<string, unknown>; path: string }>(`/custom-harness/${encodeURIComponent(name)}/config`);
+  return data;
+}
+
+export async function saveCustomHarnessConfig(name: string, config: Record<string, unknown>): Promise<{ ok: boolean; message: string }> {
+  const { data } = await api.put<{ ok: boolean; message: string }>(`/custom-harness/${encodeURIComponent(name)}/config`, { config });
+  return data;
+}
+
+export async function getSourceFile(name: string, filePath: string): Promise<{ ok: boolean; content: string; path: string }> {
+  const { data } = await api.get<{ ok: boolean; content: string; path: string }>(`/custom-harness/${encodeURIComponent(name)}/source/${filePath}`);
+  return data;
+}
+
+export async function saveSourceFile(name: string, filePath: string, content: string): Promise<{ ok: boolean; message: string }> {
+  const { data } = await api.put<{ ok: boolean; message: string }>(`/custom-harness/${encodeURIComponent(name)}/source/${filePath}`, { content });
+  return data;
+}
+
+export async function getSourceFiles(name: string, subPath?: string): Promise<{ ok: boolean; files: Array<{ name: string; isDirectory: boolean; path: string }> }> {
+  const { data } = await api.get<{ ok: boolean; files: Array<{ name: string; isDirectory: boolean; path: string }> }>(
+    `/custom-harness/${encodeURIComponent(name)}/source-files`,
+    { params: { path: subPath } }
+  );
   return data;
 }
 

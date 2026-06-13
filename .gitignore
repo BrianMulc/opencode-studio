@@ -33,5 +33,11 @@ Thumbs.db
 # Sisyphus working files
 .sisyphus/
 
+# OMO runtime working files and user custom configurations
+.omo/
+
+# OMO source — downloaded at runtime by the app
+vendor/
+
 # Changeset (version management - optional)
 .changeset/

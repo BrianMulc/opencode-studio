@@ -1249,6 +1249,9 @@ const loadAggregatedConfig = () => {
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', version: SERVER_VERSION }));
 
+// Custom Harness router — mounted at /api/custom-harness
+app.use('/api/custom-harness', require('./custom-harness'));
+
 app.post('/api/shutdown', (req, res) => {
     res.json({ success: true });
     setTimeout(() => process.exit(0), 100);
