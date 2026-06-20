@@ -95,34 +95,52 @@ export interface AgentsConfig {
 export interface ProviderOptions {
   apiKey?: string;
   baseURL?: string;
-  timeout?: number;
+  enterpriseUrl?: string;
+  setCacheKey?: boolean;
+  timeout?: number | false;
+  headerTimeout?: number | false;
+  chunkTimeout?: number;
 }
 
 export interface ProviderConfig {
   api?: string;
   name?: string;
   env?: string[];
+  id?: string;
   npm?: string;
   models?: Record<string, {
     id?: string;
     name?: string;
+    family?: string;
     release_date?: string;
-    attachments?: boolean;
+    attachment?: boolean;
     reasoning?: boolean;
+    temperature?: boolean;
+    tool_call?: boolean;
+    interleaved?: true | { field: 'reasoning' | 'reasoning_content' | 'reasoning_details' };
     limit?: {
       context?: number;
+      input?: number;
       output?: number;
     };
     cost?: {
       input: number;
       output: number;
       cache_read?: number;
+      cache_write?: number;
     };
     modalities?: {
       input: string[];
       output: string[];
     };
+    experimental?: boolean;
+    status?: 'alpha' | 'beta' | 'deprecated' | 'active';
+    provider?: {
+      npm?: string;
+      api?: string;
+    };
     variants?: Record<string, {
+      disabled?: boolean;
       reasoning?: boolean;
       options?: {
         thinkingConfig?: {
@@ -132,6 +150,7 @@ export interface ProviderConfig {
         };
       };
     }>;
+    headers?: Record<string, string>;
     options?: {
       thinkingConfig?: {
         thinkingLevel?: 'low' | 'medium' | 'high' | 'minimal';
