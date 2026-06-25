@@ -182,7 +182,6 @@ export default function AgentsPage() {
       top_p: form.top_p || undefined,
       color: form.color || undefined,
       prompt: form.prompt || "",
-      tools: form.tools,
       permission: form.permission,
       steps: form.steps,
       disable: form.disable,
@@ -413,9 +412,9 @@ export default function AgentsPage() {
                       size="sm"
                       className="h-6 text-[10px] px-2"
                       onClick={() => {
-                        const all: Record<string, boolean> = {};
-                        TOOL_OPTIONS.forEach(tool => all[tool] = true);
-                        setForm(prev => ({ ...prev, tools: all }));
+                        const perm = { ...form.permission };
+                        TOOL_OPTIONS.forEach(tool => { perm[tool as keyof PermissionConfig] = "allow"; });
+                        setForm(prev => ({ ...prev, permission: perm, tools: {} }));
                       }}
                     >
                       {t('all')}
@@ -425,7 +424,9 @@ export default function AgentsPage() {
                       size="sm"
                       className="h-6 text-[10px] px-2"
                       onClick={() => {
-                        setForm(prev => ({ ...prev, tools: {} }));
+                        const perm = { ...form.permission };
+                        TOOL_OPTIONS.forEach(tool => { perm[tool as keyof PermissionConfig] = "deny"; });
+                        setForm(prev => ({ ...prev, permission: perm, tools: {} }));
                       }}
                     >
                       {t('none')}
@@ -433,17 +434,25 @@ export default function AgentsPage() {
                   </div>
                 </div>
                 <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 border rounded-md p-3 bg-muted/20">
-                  {TOOL_OPTIONS.map((tool) => (
-                    <label key={tool} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/50 p-1 rounded transition-colors">
-                      <Switch
-                        checked={!!form.tools[tool]}
-                        onCheckedChange={(checked) =>
-                          setForm((prev) => ({ ...prev, tools: { ...prev.tools, [tool]: checked } }))
-                        }
-                      />
-                      <span className="font-mono text-[10px] text-muted-foreground truncate">{tool}</span>
-                    </label>
-                  ))}
+                  {TOOL_OPTIONS.map((tool) => {
+                    const permValue = form.permission[tool as keyof PermissionConfig];
+                    const checked = permValue === "allow" || (permValue === undefined && form.permission["*"] === "allow");
+                    return (
+                      <label key={tool} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/50 p-1 rounded transition-colors">
+                        <Switch
+                          checked={checked}
+                          onCheckedChange={(isChecked) =>
+                            setForm((prev) => ({
+                              ...prev,
+                              permission: { ...prev.permission, [tool]: isChecked ? "allow" : "deny" },
+                              tools: {},
+                            }))
+                          }
+                        />
+                        <span className="font-mono text-[10px] text-muted-foreground truncate">{tool}</span>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
 
