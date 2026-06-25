@@ -302,7 +302,7 @@ export default function AgentsPage() {
             </DialogHeader>
 
             <div className="flex-1 min-h-0 overflow-y-auto p-6">
-              <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr] h-full">
+              <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
                 <div className="space-y-6">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
@@ -541,7 +541,7 @@ export default function AgentsPage() {
                         </Button>
                       </div>
                       <CollapsibleContent className="animate-scale-in">
-                        <div className="mt-4 border rounded-md p-4 max-h-[50vh] overflow-y-auto">
+                        <div className="mt-4 border rounded-md p-4 max-h-[40vh] overflow-y-auto">
                           <PermissionEditor
                             value={form.permission}
                             onChange={(next) => setForm((prev) => ({ ...prev, permission: next }))}
