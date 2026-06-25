@@ -23,6 +23,8 @@ const TOOL_LIST = [
   "todoread",
   "todowrite",
   "webfetch",
+  "websearch",
+  "question",
   "external_directory",
   "doom_loop",
 ] as const;

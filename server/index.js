@@ -10,6 +10,7 @@ try { ({ DatabaseSync } = require('node:sqlite')); } catch {}
 const { spawn, exec, execSync } = require('child_process');
 const yaml = require('js-yaml');
 const configProviders = require('./lib/config-providers');
+const { aggregateAgents, parseAgentMarkdown, buildAgentMarkdown } = require('./lib/agent-aggregation');
 
 const pkg = require('./package.json');
 const profileManager = require('./profile-manager');
@@ -732,14 +733,17 @@ const getPaths = () => {
 };
 
 const getOhMyOpenCodeConfigPath = () => {
+    const detection = configProviders.detectProviders({ roots: getSearchRoots() });
+    const omoProvider = detection.find((p) => p.id === configProviders.PROVIDER_IDS.OH_MY_OPENAGENT);
+    return omoProvider?.activePath || null;
+};
+
+const getOhMyOpenCodeConfigPathOrDefault = () => {
+    const detected = getOhMyOpenCodeConfigPath();
+    if (detected) return detected;
     const cp = getConfigPath();
     if (!cp) return null;
-    const dir = path.dirname(cp);
-    const newPath = path.join(dir, 'oh-my-openagent.json');
-    const oldPath = path.join(dir, 'oh-my-opencode.json');
-    if (fs.existsSync(newPath)) return newPath;
-    if (fs.existsSync(oldPath)) return oldPath;
-    return newPath;
+    return path.join(path.dirname(cp), 'oh-my-openagent.json');
 };
 
 const getConfigPath = () => getPaths().current;
@@ -816,6 +820,16 @@ const getSkillDirs = () => {
             } catch (e) {
                 console.warn(`Failed to read skills from ${skillsDir}:`, e.message);
             }
+        }
+
+        const claudeSkillsDir = path.join(root, '.claude', 'skills');
+        if (fs.existsSync(claudeSkillsDir)) {
+            dirs.push({ path: claudeSkillsDir, source: 'claude-skills-dir', root });
+        }
+
+        const agentsSkillsDir = path.join(root, '.agents', 'skills');
+        if (fs.existsSync(agentsSkillsDir)) {
+            dirs.push({ path: agentsSkillsDir, source: 'agents-skills-dir', root });
         }
     }
 
@@ -1044,24 +1058,6 @@ const getAgentDirs = () => {
     return [...new Set(dirs)];
 };
 
-const parseAgentMarkdown = (content) => {
-    const match = content.match(/^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?([\s\S]*)$/);
-    if (!match) return { data: {}, body: content };
-    let data = {};
-    try {
-        data = yaml.load(match[1]) || {};
-    } catch {
-        data = {};
-    }
-    return { data, body: match[2] || '' };
-};
-
-const buildAgentMarkdown = (frontmatter, body) => {
-    const yamlText = yaml.dump(frontmatter, { lineWidth: 120, noRefs: true, quotingType: '"' });
-    const content = body || '';
-    return `---\n${yamlText}---\n\n${content}`;
-};
-
 const validatePermissionValue = (value) => {
     const allowed = ['ask', 'allow', 'deny'];
     if (value === undefined || value === null) return true;
@@ -1230,8 +1226,9 @@ const loadAggregatedConfig = () => {
             Object.assign(aggregated.env, config.env);
         }
 
-        if (config.plugins && Array.isArray(config.plugins)) {
-            for (const plugin of config.plugins) {
+        const pluginList = config.plugin || config.plugins;
+        if (pluginList && Array.isArray(pluginList)) {
+            for (const plugin of pluginList) {
                 const name = typeof plugin === 'string' ? plugin : plugin.name || plugin.npm;
                 if (name && !aggregated.plugins.find((p) => p.name === name)) {
                     aggregated.plugins.push({
@@ -1423,104 +1420,14 @@ app.get('/api/commands', (req, res) => {
     }
 });
 
-const aggregateAgents = () => {
-    const agentMap = new Map();
-    const roots = getSearchRoots();
-    
-    for (const root of roots) {
-        // Read from opencode.json (agent field - singular)
-        const configPath = path.join(root, 'opencode.json');
-        if (fs.existsSync(configPath)) {
-            try {
-                const content = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-                const configAgents = content.agent || {};
-                for (const [name, agentConfig] of Object.entries(configAgents)) {
-                    if (!agentMap.has(name)) {
-                        agentMap.set(name, {
-                            name,
-                            source: 'json-config',
-                            configPath: root,
-                            ...agentConfig,
-                            permission: agentConfig.permission || agentConfig.permissions,
-                            permissions: agentConfig.permission || agentConfig.permissions
-                        });
-                    }
-                }
-            } catch (err) {
-                console.error(`Failed to read agent config from ${configPath}:`, err.message);
-            }
-        }
-        
-        // Read from oh-my-openagent.json (agents field - plural)
-        const omoConfigPath = path.join(root, 'oh-my-openagent.json');
-        if (fs.existsSync(omoConfigPath)) {
-            try {
-                const content = JSON.parse(fs.readFileSync(omoConfigPath, 'utf8'));
-                const configAgents = content.agents || {};
-                for (const [name, agentConfig] of Object.entries(configAgents)) {
-                    if (!agentMap.has(name)) {
-                        agentMap.set(name, {
-                            name,
-                            source: 'json-config',
-                            configPath: root,
-                            ...agentConfig,
-                            permission: agentConfig.permission || agentConfig.permissions,
-                            permissions: agentConfig.permission || agentConfig.permissions
-                        });
-                    }
-                }
-            } catch (err) {
-                console.error(`Failed to read agent config from ${omoConfigPath}:`, err.message);
-            }
-        }
-    }
-    
-    for (const dir of getAgentDirs()) {
-        if (!fs.existsSync(dir)) continue;
-        const files = fs.readdirSync(dir).filter((f) => f.endsWith('.md'));
-        files.forEach((file) => {
-            const fp = path.join(dir, file);
-            const content = fs.readFileSync(fp, 'utf8');
-            const { data, body } = parseAgentMarkdown(content);
-            const name = path.basename(file, '.md');
-            
-            if (!agentMap.has(name)) {
-                agentMap.set(name, {
-                    name,
-                    source: 'markdown',
-                    path: fp,
-                    disabled: false,
-                    description: data.description,
-                    mode: data.mode,
-                    model: data.model,
-                    temperature: data.temperature,
-                    tools: data.tools,
-                    permission: data.permission,
-                    permissions: data.permission,
-                    maxSteps: data.maxSteps,
-                    disable: data.disable,
-                    hidden: data.hidden,
-                    prompt: body
-                });
-            }
-        });
-    }
-    
-    ['build', 'plan'].forEach((name) => {
-        if (!agentMap.has(name)) {
-            agentMap.set(name, { name, source: 'builtin', mode: 'primary', disabled: false });
-        }
-    });
-    
-    return Array.from(agentMap.values());
-};
-
 app.get('/api/agents', (req, res) => {
     try {
         const studio = loadStudioConfig();
         const disabledAgents = studio.disabledAgents || [];
         
-        const agents = aggregateAgents();
+        const configPath = getConfigPath();
+        const activeConfigDir = configPath ? path.dirname(configPath) : null;
+        const agents = aggregateAgents({ roots: getSearchRoots(), agentDirs: getAgentDirs(), activeConfigDir });
         
         const agentsWithStatus = agents.map(agent => ({
             ...agent,
@@ -1562,9 +1469,11 @@ app.post('/api/agents', (req, res) => {
                 mode: normalizedConfig?.mode,
                 model: normalizedConfig?.model,
                 temperature: normalizedConfig?.temperature,
+                top_p: normalizedConfig?.top_p,
+                color: normalizedConfig?.color,
                 tools: normalizedConfig?.tools,
                 permission: normalizedConfig?.permission,
-                maxSteps: normalizedConfig?.maxSteps,
+                steps: normalizedConfig?.steps ?? normalizedConfig?.maxSteps,
                 disable: normalizedConfig?.disable,
                 hidden: normalizedConfig?.hidden
             };
@@ -1613,9 +1522,11 @@ app.put('/api/agents/:name', (req, res) => {
                 mode: normalizedConfig?.mode,
                 model: normalizedConfig?.model,
                 temperature: normalizedConfig?.temperature,
+                top_p: normalizedConfig?.top_p,
+                color: normalizedConfig?.color,
                 tools: normalizedConfig?.tools,
                 permission: normalizedConfig?.permission,
-                maxSteps: normalizedConfig?.maxSteps,
+                steps: normalizedConfig?.steps ?? normalizedConfig?.maxSteps,
                 disable: normalizedConfig?.disable,
                 hidden: normalizedConfig?.hidden
             };
@@ -1636,16 +1547,39 @@ app.put('/api/agents/:name', (req, res) => {
 app.delete('/api/agents/:name', (req, res) => {
     try {
         const { name } = req.params;
-        const config = loadConfig() || {};
+        const configPath = getConfigPath();
+        const activeConfigDir = configPath ? path.dirname(configPath) : null;
+        const agents = aggregateAgents({ roots: getSearchRoots(), agentDirs: getAgentDirs(), activeConfigDir });
+        const agent = agents.find((a) => a.name === name);
 
-        if (config.agent && config.agent[name]) {
-            delete config.agent[name];
-            saveConfig(config);
+        if (!agent) {
+            return res.status(404).json({ error: 'Agent not found' });
         }
 
-        for (const dir of getAgentDirs()) {
-            const fp = path.join(dir, `${name}.md`);
-            if (fs.existsSync(fp)) fs.unlinkSync(fp);
+        if (agent.source === 'builtin') {
+            return res.status(400).json({ error: 'Cannot delete built-in agents' });
+        }
+
+        if (agent.sourceProvider === 'opencode') {
+            const config = loadConfig() || {};
+            if (config.agent && config.agent[name]) {
+                delete config.agent[name];
+                saveConfig(config);
+            }
+        } else if (agent.sourceProvider === 'oh-my-openagent') {
+            const omoPath = agent.configPath;
+            if (omoPath && fs.existsSync(omoPath)) {
+                const rawText = fs.readFileSync(omoPath, 'utf8');
+                const content = configProviders.parseJsonText(rawText);
+                if (content.agents && content.agents[name]) {
+                    delete content.agents[name];
+                    configProviders.atomicWriteTextSync(omoPath, JSON.stringify(content, null, 2), 'utf8');
+                }
+            }
+        } else if (agent.source === 'markdown') {
+            if (agent.path && fs.existsSync(agent.path)) {
+                fs.unlinkSync(agent.path);
+            }
         }
 
         triggerGitHubAutoSync();
@@ -2158,7 +2092,7 @@ function loadOhMyOpenCodeConfig() {
 }
 
 function saveOhMyOpenCodeConfig(config) {
-    const configPath = getOhMyOpenCodeConfigPath();
+    const configPath = getOhMyOpenCodeConfigPathOrDefault();
     if (!configPath) throw new Error('No opencode config path found');
     atomicWriteFileSync(configPath, JSON.stringify(config, null, 2));
 }
@@ -3007,7 +2941,7 @@ app.post('/api/ohmyopencode', (req, res) => {
             }
         }
         
-        const legacyOhMyPath = getOhMyOpenCodeConfigPath();
+        const legacyOhMyPath = getOhMyOpenCodeConfigPathOrDefault();
         const saveTargetProvider = (provider && provider.activePath)
             ? provider
             : { activePath: legacyOhMyPath, paths: [legacyOhMyPath].filter(Boolean) };

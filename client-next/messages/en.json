@@ -230,11 +230,37 @@
       "snapshot": "Snapshot",
       "snapshotDescription": "Enable conversation snapshots"
     },
-    "permissions": {
-      "title": "Permissions",
-      "description": "Manage tool permissions and patterns"
-    },
-    "systemPrompt": {
+  "permissions": {
+    "title": "Permissions",
+    "description": "Manage tool permissions and patterns"
+  },
+  "advanced": {
+    "title": "Advanced",
+    "description": "Shell, providers, compaction, file watcher, and instructions",
+    "shell": "Shell",
+    "shellPlaceholder": "pwsh, bash, zsh, or absolute path",
+    "shellDescription": "Shell used for the interactive terminal and agent tool calls",
+    "disabledProviders": "Disabled Providers",
+    "disabledProvidersPlaceholder": "openai, gemini",
+    "disabledProvidersDescription": "Providers that won't load even if credentials exist (comma-separated)",
+    "enabledProviders": "Enabled Providers",
+    "enabledProvidersPlaceholder": "anthropic, openai",
+    "enabledProvidersDescription": "Allowlist — only these providers will load (comma-separated)",
+    "compactionTitle": "Compaction",
+    "compactionDescription": "Control context compaction behavior for long sessions",
+    "compactionAuto": "Auto Compact",
+    "compactionAutoDescription": "Automatically compact when context is full",
+    "compactionPrune": "Prune",
+    "compactionPruneDescription": "Remove old tool outputs to save tokens",
+    "compactionReserved": "Reserved Tokens",
+    "watcherIgnore": "File Watcher Ignore Patterns",
+    "watcherIgnorePlaceholder": "node_modules/**\ndist/**\n.git/**",
+    "watcherIgnoreDescription": "Glob patterns to exclude from file watching (one per line)",
+    "instructions": "Instructions",
+    "instructionsPlaceholder": "CONTRIBUTING.md\ndocs/guidelines.md\ncursor/rules/*.md",
+    "instructionsDescription": "Paths or glob patterns to instruction/rules files (one per line)"
+  },
+  "systemPrompt": {
       "title": "System Prompt",
       "description": "Edit your global OPENCODE.md instructions",
       "saveChanges": "Save Changes"
@@ -514,8 +540,11 @@
     "descriptionPlaceholder": "What does this agent do?",
     "modeLabel": "Mode",
     "modelLabel": "Model Override",
-    "temperatureLabel": "Temperature",
-    "maxStepsLabel": "Max Steps",
+  "temperatureLabel": "Temperature",
+  "topPLabel": "Top P",
+  "stepsLabel": "Max Steps",
+  "colorLabel": "Color",
+  "maxStepsLabel": "Max Steps",
     "sourceLabel": "Source",
     "scopeLabel": "Scope",
     "global": "Global",

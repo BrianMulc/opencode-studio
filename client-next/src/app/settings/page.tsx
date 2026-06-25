@@ -22,6 +22,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PermissionEditor } from "@/components/permission-editor";
 import { Sliders as Settings, Android, Download, Upload, Save, ChevronDown, Loader, Code, Github } from "@nsmr/pixelart-react";
@@ -58,6 +59,7 @@ export default function SettingsPage() {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     general: true,
     permissions: false,
+    advanced: false,
     prompts: false,
     backup: false,
   });
@@ -398,6 +400,118 @@ const [systemPrompt, setSystemPrompt] = useState("");
         </Card>
       </Collapsible>
  
+      <Collapsible open={openSections.advanced} onOpenChange={() => toggleSection("advanced")}>
+        <Card className="hover-lift">
+          <CollapsibleTrigger asChild>
+            <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Settings className="h-5 w-5" />
+                  <CardTitle>{t('advanced.title')}</CardTitle>
+                </div>
+                <ChevronDown className={`h-5 w-5 transition-transform duration-200 ${openSections.advanced ? "rotate-180" : ""}`} />
+              </div>
+              <CardDescription>{t('advanced.description')}</CardDescription>
+            </CardHeader>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="animate-scale-in">
+            <CardContent className="space-y-6 pt-0">
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label>{t('advanced.shell')}</Label>
+                  <Input
+                    value={config?.shell || ""}
+                    onChange={(e) => updateConfig({ shell: e.target.value || undefined })}
+                    placeholder={t('advanced.shellPlaceholder')}
+                  />
+                  <p className="text-xs text-muted-foreground">{t('advanced.shellDescription')}</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{t('advanced.disabledProviders')}</Label>
+                  <Input
+                    value={(config?.disabled_providers || []).join(", ")}
+                    onChange={(e) => updateConfig({ disabled_providers: e.target.value.split(",").map((v) => v.trim()).filter(Boolean) })}
+                    placeholder={t('advanced.disabledProvidersPlaceholder')}
+                  />
+                  <p className="text-xs text-muted-foreground">{t('advanced.disabledProvidersDescription')}</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{t('advanced.enabledProviders')}</Label>
+                  <Input
+                    value={(config?.enabled_providers || []).join(", ")}
+                    onChange={(e) => updateConfig({ enabled_providers: e.target.value.split(",").map((v) => v.trim()).filter(Boolean) })}
+                    placeholder={t('advanced.enabledProvidersPlaceholder')}
+                  />
+                  <p className="text-xs text-muted-foreground">{t('advanced.enabledProvidersDescription')}</p>
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-4 border-t">
+                <div>
+                  <Label>{t('advanced.compactionTitle')}</Label>
+                  <p className="text-sm text-muted-foreground mb-3">{t('advanced.compactionDescription')}</p>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="flex items-center justify-between p-3 bg-background rounded-lg">
+                      <div>
+                        <Label className="text-sm">{t('advanced.compactionAuto')}</Label>
+                        <p className="text-xs text-muted-foreground">{t('advanced.compactionAutoDescription')}</p>
+                      </div>
+                      <Switch
+                        checked={config?.compaction?.auto !== false}
+                        onCheckedChange={(v) => updateConfig({ compaction: { ...config?.compaction, auto: v } })}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-background rounded-lg">
+                      <div>
+                        <Label className="text-sm">{t('advanced.compactionPrune')}</Label>
+                        <p className="text-xs text-muted-foreground">{t('advanced.compactionPruneDescription')}</p>
+                      </div>
+                      <Switch
+                        checked={config?.compaction?.prune === true}
+                        onCheckedChange={(v) => updateConfig({ compaction: { ...config?.compaction, prune: v } })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm">{t('advanced.compactionReserved')}</Label>
+                      <Input
+                        type="number"
+                        value={config?.compaction?.reserved ?? ""}
+                        onChange={(e) => updateConfig({ compaction: { ...config?.compaction, reserved: e.target.value ? Number(e.target.value) : undefined } })}
+                        placeholder="10000"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2 pt-4 border-t">
+                <Label>{t('advanced.watcherIgnore')}</Label>
+                <Textarea
+                  className="min-h-[80px] font-mono text-xs resize-none"
+                  value={(config?.watcher?.ignore || []).join("\n")}
+                  onChange={(e) => updateConfig({ watcher: { ignore: e.target.value.split("\n").map((v) => v.trim()).filter(Boolean) } })}
+                  placeholder={t('advanced.watcherIgnorePlaceholder')}
+                />
+                <p className="text-xs text-muted-foreground">{t('advanced.watcherIgnoreDescription')}</p>
+              </div>
+
+              <div className="space-y-2 pt-4 border-t">
+                <Label>{t('advanced.instructions')}</Label>
+                <Textarea
+                  className="min-h-[80px] font-mono text-xs resize-none"
+                  value={(config?.instructions || []).join("\n")}
+                  onChange={(e) => updateConfig({ instructions: e.target.value.split("\n").map((v) => v.trim()).filter(Boolean) })}
+                  placeholder={t('advanced.instructionsPlaceholder')}
+                />
+                <p className="text-xs text-muted-foreground">{t('advanced.instructionsDescription')}</p>
+              </div>
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
+
       <Collapsible open={openSections.prompts} onOpenChange={() => toggleSection("prompts")}>
         <Card className="hover-lift">
           <CollapsibleTrigger asChild>

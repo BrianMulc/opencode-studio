@@ -45,6 +45,7 @@ const TOOL_OPTIONS = [
   "todoread",
   "todowrite",
   "webfetch",
+  "websearch",
 ];
 
 const MODES: Array<AgentConfig["mode"]> = ["primary", "subagent", "all"];
@@ -55,10 +56,12 @@ interface AgentFormState {
   mode: AgentConfig["mode"];
   model: string;
   temperature: number;
+  top_p: number;
+  color: string;
   prompt: string;
   tools: Record<string, boolean>;
   permission: PermissionConfig;
-  maxSteps?: number;
+  steps?: number;
   disable?: boolean;
   hidden?: boolean;
   source: "markdown" | "json";
@@ -71,10 +74,12 @@ const emptyForm = (): AgentFormState => ({
   mode: "subagent",
   model: "",
   temperature: 0.3,
+  top_p: 0,
+  color: "",
   prompt: "",
   tools: {},
   permission: { "*": "ask" },
-  maxSteps: undefined,
+  steps: undefined,
   disable: false,
   hidden: false,
   source: "markdown",
@@ -128,10 +133,12 @@ export default function AgentsPage() {
       mode: agent.mode || "subagent",
       model: agent.model || "",
       temperature: agent.temperature ?? 0.3,
+      top_p: agent.top_p ?? 0,
+      color: agent.color || "",
       prompt: agent.prompt || "",
       tools: agent.tools || {},
       permission: agent.permission || agent.permissions || { "*": "ask" },
-      maxSteps: agent.maxSteps,
+      steps: agent.steps ?? agent.maxSteps,
       disable: agent.disable,
       hidden: agent.hidden,
       source: agent.source === "json" ? "json" : "markdown",
@@ -151,10 +158,12 @@ export default function AgentsPage() {
       mode: form.mode || "subagent",
       model: form.model || undefined,
       temperature: form.temperature,
+      top_p: form.top_p || undefined,
+      color: form.color || undefined,
       prompt: form.prompt || "",
       tools: form.tools,
       permission: form.permission,
-      maxSteps: form.maxSteps,
+      steps: form.steps,
       disable: form.disable,
       hidden: form.hidden,
     };
@@ -293,11 +302,30 @@ export default function AgentsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>{t('maxStepsLabel')}</Label>
+                  <Label>{t('topPLabel')}</Label>
                   <Input
                     type="number"
-                    value={form.maxSteps ?? ""}
-                    onChange={(e) => setForm((prev) => ({ ...prev, maxSteps: e.target.value ? Number(e.target.value) : undefined }))}
+                    step="0.1"
+                    min="0"
+                    max="1"
+                    value={form.top_p || ""}
+                    onChange={(e) => setForm((prev) => ({ ...prev, top_p: e.target.value ? Number(e.target.value) : 0 }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t('stepsLabel')}</Label>
+                  <Input
+                    type="number"
+                    value={form.steps ?? ""}
+                    onChange={(e) => setForm((prev) => ({ ...prev, steps: e.target.value ? Number(e.target.value) : undefined }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t('colorLabel')}</Label>
+                  <Input
+                    value={form.color}
+                    onChange={(e) => setForm((prev) => ({ ...prev, color: e.target.value }))}
+                    placeholder="#FF5733"
                   />
                 </div>
                 {!editing && (

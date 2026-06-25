@@ -23,21 +23,28 @@ export interface ModelAlias {
 
 export type PermissionValue = 'ask' | 'allow' | 'deny';
 
+export type PermissionEntry =
+  | PermissionValue
+  | Record<string, PermissionValue>
+  | { allow?: string[]; deny?: string[] };
+
 export interface PermissionConfig {
   '*'?: PermissionValue;
-  read?: PermissionValue | { allow?: string[]; deny?: string[] };
-  edit?: PermissionValue | { allow?: string[]; deny?: string[] };
-  glob?: PermissionValue | { allow?: string[]; deny?: string[] };
-  grep?: PermissionValue | { allow?: string[]; deny?: string[] };
-  list?: { allow?: string[]; deny?: string[] };
-  bash?: { allow?: string[]; deny?: string[] };
-  task?: { allow?: string[]; deny?: string[] };
-  skill?: PermissionValue;
-  lsp?: PermissionValue;
+  read?: PermissionEntry;
+  edit?: PermissionEntry;
+  glob?: PermissionEntry;
+  grep?: PermissionEntry;
+  list?: PermissionEntry;
+  bash?: PermissionEntry;
+  task?: PermissionEntry;
+  skill?: PermissionEntry;
+  lsp?: PermissionEntry;
   todoread?: PermissionValue;
   todowrite?: PermissionValue;
-  webfetch?: { allow?: string[]; deny?: string[] };
-  external_directory?: { allow?: string[]; deny?: string[] };
+  webfetch?: PermissionValue;
+  websearch?: PermissionValue;
+  question?: PermissionValue;
+  external_directory?: PermissionEntry;
   doom_loop?: PermissionValue;
 }
 
@@ -53,6 +60,7 @@ export interface AgentConfig {
   permission?: PermissionConfig;
   description?: string;
   color?: string;
+  steps?: number;
   maxSteps?: number;
   mode?: 'subagent' | 'primary' | 'all';
   disable?: boolean;
@@ -64,6 +72,9 @@ export type AgentSource = 'json' | 'markdown' | 'builtin';
 export interface AgentInfo extends AgentConfig {
   name: string;
   source: AgentSource;
+  sourceProvider?: 'opencode' | 'oh-my-openagent';
+  configPath?: string;
+  active?: boolean;
   disabled?: boolean;
 }
 
@@ -333,8 +344,7 @@ export interface KeybindsConfig {
 export interface CompactionConfig {
   auto?: boolean;
   prune?: boolean;
-  minTokens?: number;
-  maxTokens?: number;
+  reserved?: number;
 }
 
 export interface WatcherConfig {
@@ -394,6 +404,7 @@ export interface OpencodeConfig {
   share?: 'manual' | 'auto' | 'disabled';
   default_agent?: string;
   snapshot?: boolean;
+  shell?: string;
   mcp?: Record<string, MCPConfig>;
   permission?: PermissionConfig;
   agent?: AgentsConfig;
@@ -406,6 +417,9 @@ export interface OpencodeConfig {
   formatter?: FormatterConfig;
   command?: Record<string, { template: string }>;
   plugin?: string[];
+  instructions?: string[];
+  disabled_providers?: string[];
+  enabled_providers?: string[];
   experimental?: ExperimentalConfig;
   provider?: Record<string, ProviderConfig>;
 }
@@ -617,13 +631,6 @@ export interface GitHubBackupResult {
   commit?: string;
   url?: string;
   error?: string;
-}
-
-export interface AgentInfo {
-  name: string;
-  description?: string;
-  enabled: boolean;
-  config?: AgentConfig;
 }
 
 export interface RulesResponse {
