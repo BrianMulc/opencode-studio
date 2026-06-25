@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import type { AgentConfig, AgentInfo, PermissionConfig } from "@/types";
 import { getAgents, saveAgent, deleteAgent, toggleAgent } from "@/lib/api";
 import { useErrorTranslation } from "@/lib/error-translate";
+import { cn } from "@/lib/utils";
 import { AgentCard } from "@/components/agent-card";
 import { PermissionEditor } from "@/components/permission-editor";
 import { PageHelp } from "@/components/page-help";
@@ -47,6 +48,16 @@ const TOOL_OPTIONS = [
   "webfetch",
   "websearch",
 ];
+
+const THEME_COLOR_PREVIEW: Record<string, string> = {
+  primary: "#3b82f6",
+  secondary: "#6b7280",
+  accent: "#8b5cf6",
+  success: "#22c55e",
+  warning: "#f59e0b",
+  error: "#ef4444",
+  info: "#06b6d4",
+};
 
 const MODES: Array<AgentConfig["mode"]> = ["primary", "subagent", "all"];
 
@@ -367,11 +378,41 @@ export default function AgentsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>{t('colorLabel')}</Label>
-                  <Input
-                    value={form.color}
-                    onChange={(e) => setForm((prev) => ({ ...prev, color: e.target.value }))}
-                    placeholder="#FF5733"
-                  />
+                  <div className="flex items-center gap-2">
+                    <div className="relative h-9 w-9 shrink-0 rounded-md border overflow-hidden">
+                      <div
+                        className="absolute inset-0"
+                        style={{ backgroundColor: THEME_COLOR_PREVIEW[form.color] || (form.color?.startsWith("#") ? form.color : "#cccccc") }}
+                      />
+                      <input
+                        type="color"
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                        value={form.color?.startsWith("#") ? form.color : "#cccccc"}
+                        onChange={(e) => setForm((prev) => ({ ...prev, color: e.target.value }))}
+                      />
+                    </div>
+                    <Input
+                      value={form.color || ""}
+                      onChange={(e) => setForm((prev) => ({ ...prev, color: e.target.value }))}
+                      placeholder="#FF5733 or primary"
+                      className="flex-1"
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {Object.entries(THEME_COLOR_PREVIEW).map(([name, color]) => (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => setForm((prev) => ({ ...prev, color: name }))}
+                        className={cn(
+                          "h-6 w-6 rounded-md border-2 transition-transform hover:scale-110",
+                          form.color === name ? "border-foreground ring-2 ring-offset-1 ring-foreground" : "border-border"
+                        )}
+                        style={{ backgroundColor: color }}
+                        title={name}
+                      />
+                    ))}
+                  </div>
                 </div>
                 {!editing && (
                   <>
