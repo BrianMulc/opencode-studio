@@ -151,14 +151,76 @@ const aggregateAgents = ({ roots = [], agentDirs = [], activeConfigDir = null } 
     }
 
     [
-        { name: 'build', mode: 'primary', description: 'Default primary agent with all tools enabled for development work.' },
-        { name: 'plan', mode: 'primary', description: 'Restricted agent for planning and analysis. File edits and bash require approval by default.' },
-        { name: 'general', mode: 'subagent', description: 'General-purpose agent for researching complex questions and executing multi-step tasks. Full tool access except todo.' },
-        { name: 'explore', mode: 'subagent', description: 'Fast, read-only agent for exploring codebases. Cannot modify files.' },
-        { name: 'scout', mode: 'subagent', description: 'Read-only agent for external docs and dependency research. Clones dependency repos into a managed cache.' },
-    ].forEach(({ name, mode, description }) => {
+        {
+            name: 'build',
+            mode: 'primary',
+            description: 'Default primary agent with all tools enabled for development work.',
+            permission: { '*': 'allow', doom_loop: 'ask', question: 'allow' },
+        },
+        {
+            name: 'plan',
+            mode: 'primary',
+            description: 'Restricted agent for planning and analysis. File edits and bash require approval by default.',
+            permission: {
+                '*': 'allow',
+                edit: { '*': 'deny' },
+                bash: 'ask',
+                todowrite: 'ask',
+                task: { general: 'deny' },
+                question: 'allow',
+                doom_loop: 'ask',
+            },
+        },
+        {
+            name: 'general',
+            mode: 'subagent',
+            description: 'General-purpose agent for researching complex questions and executing multi-step tasks. Full tool access except todo.',
+            permission: { '*': 'allow', todowrite: 'deny', doom_loop: 'ask' },
+        },
+        {
+            name: 'explore',
+            mode: 'subagent',
+            description: 'Fast, read-only agent for exploring codebases. Cannot modify files.',
+            permission: {
+                '*': 'deny',
+                read: 'allow',
+                glob: 'allow',
+                grep: 'allow',
+                list: 'allow',
+                lsp: 'allow',
+                task: 'allow',
+                doom_loop: 'ask',
+            },
+        },
+        {
+            name: 'scout',
+            mode: 'subagent',
+            description: 'Read-only agent for external docs and dependency research. Clones dependency repos into a managed cache.',
+            permission: {
+                '*': 'deny',
+                read: 'allow',
+                glob: 'allow',
+                grep: 'allow',
+                list: 'allow',
+                bash: 'allow',
+                webfetch: 'allow',
+                websearch: 'allow',
+                task: 'allow',
+                doom_loop: 'ask',
+            },
+        },
+    ].forEach(({ name, mode, description, permission }) => {
         if (!agentMap.has(name)) {
-            agentMap.set(name, { name, source: 'builtin', mode, description, active: true, disabled: false });
+            agentMap.set(name, {
+                name,
+                source: 'builtin',
+                mode,
+                description,
+                permission,
+                permissions: permission,
+                active: true,
+                disabled: false,
+            });
         }
     });
 
