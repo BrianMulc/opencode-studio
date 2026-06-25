@@ -6,16 +6,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Code, Trash, ToggleLeft, ToggleRight } from "@nsmr/pixelart-react";
+import { Code, Trash, ToggleLeft, ToggleRight, Copy } from "@nsmr/pixelart-react";
 
 interface AgentCardProps {
   agent: AgentInfo;
   onEdit: (agent: AgentInfo) => void;
   onDelete: (agent: AgentInfo) => void;
   onToggle: (agent: AgentInfo) => void;
+  onDuplicate: (agent: AgentInfo) => void;
 }
 
-export function AgentCard({ agent, onEdit, onDelete, onToggle }: AgentCardProps) {
+export function AgentCard({ agent, onEdit, onDelete, onToggle, onDuplicate }: AgentCardProps) {
   const t = useTranslations("agents");
   const sourceLabelKey = agent.source === "json" ? "sourceJson" : agent.source === "markdown" ? "sourceMarkdown" : "sourceBuiltin";
   const modeLabel = agent.mode || t("defaultMode");
@@ -45,6 +46,10 @@ export function AgentCard({ agent, onEdit, onDelete, onToggle }: AgentCardProps)
           <Button size="sm" variant="ghost" onClick={() => onEdit(agent)}>
             <Code className="h-4 w-4" />
             {t("edit")}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => onDuplicate(agent)}>
+            <Copy className="h-4 w-4" />
+            {t("duplicate")}
           </Button>
           <Button size="sm" variant="ghost" className="text-destructive" onClick={() => onDelete(agent)}>
             <Trash className="h-4 w-4" />

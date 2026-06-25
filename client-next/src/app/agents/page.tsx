@@ -50,6 +50,25 @@ const TOOL_OPTIONS = [
 
 const MODES: Array<AgentConfig["mode"]> = ["primary", "subagent", "all"];
 
+function deriveToolsFromPermission(permission: PermissionConfig | undefined, toolOptions: string[]): Record<string, boolean> {
+  if (!permission) return {};
+  const wildcard = permission["*"];
+  const tools: Record<string, boolean> = {};
+  for (const tool of toolOptions) {
+    const perm = permission[tool as keyof PermissionConfig];
+    if (perm === "allow") {
+      tools[tool] = true;
+    } else if (perm === "deny") {
+      tools[tool] = false;
+    } else if (wildcard === "allow") {
+      tools[tool] = true;
+    } else {
+      tools[tool] = false;
+    }
+  }
+  return tools;
+}
+
 interface AgentFormState {
   name: string;
   description: string;
@@ -136,7 +155,9 @@ export default function AgentsPage() {
       top_p: agent.top_p ?? 0,
       color: agent.color || "",
       prompt: agent.prompt || "",
-      tools: agent.tools || {},
+      tools: agent.tools && Object.keys(agent.tools).length > 0
+        ? agent.tools
+        : deriveToolsFromPermission(agent.permission || agent.permissions, TOOL_OPTIONS),
       permission: agent.permission || agent.permissions || { "*": "ask" },
       steps: agent.steps ?? agent.maxSteps,
       disable: agent.disable,
@@ -206,6 +227,30 @@ export default function AgentsPage() {
     }
   };
 
+  const handleDuplicate = (agent: AgentInfo) => {
+    setEditing(null);
+    setForm({
+      name: `${agent.name}-copy`,
+      description: agent.description || "",
+      mode: agent.mode || "subagent",
+      model: agent.model || "",
+      temperature: agent.temperature ?? 0.3,
+      top_p: agent.top_p ?? 0,
+      color: agent.color || "",
+      prompt: agent.prompt || "",
+      tools: agent.tools && Object.keys(agent.tools).length > 0
+        ? { ...agent.tools }
+        : deriveToolsFromPermission(agent.permission || agent.permissions, TOOL_OPTIONS),
+      permission: agent.permission || agent.permissions || { "*": "ask" },
+      steps: agent.steps ?? agent.maxSteps,
+      disable: false,
+      hidden: agent.hidden,
+      source: agent.source === "json" ? "json" : "markdown",
+      scope: "global",
+    });
+    setOpen(true);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -232,6 +277,7 @@ export default function AgentsPage() {
               onEdit={() => openEditor(agent)}
               onDelete={handleDelete}
               onToggle={handleToggle}
+              onDuplicate={handleDuplicate}
             />
           ))}
         </div>
