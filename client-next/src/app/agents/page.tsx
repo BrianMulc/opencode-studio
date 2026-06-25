@@ -523,22 +523,32 @@ export default function AgentsPage() {
                   </div>
 
                   <div className="space-y-4 pt-4 border-t">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-0.5">
-                        <Label className="text-base">{t('toolPermissions')}</Label>
-                        <p className="text-xs text-muted-foreground">
-                          {t('toolPermissionsDescription')}
-                        </p>
+                    <Collapsible open={permissionsModalOpen} onOpenChange={setPermissionsModalOpen}>
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <Label className="text-base">{t('toolPermissions')}</Label>
+                          <p className="text-xs text-muted-foreground">
+                            {t('toolPermissionsDescription')}
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          onClick={() => setPermissionsModalOpen(!permissionsModalOpen)}
+                          className="gap-2"
+                        >
+                          <Settings className="h-4 w-4" />
+                          {permissionsModalOpen ? t('cancel') : t('configure')}
+                        </Button>
                       </div>
-                      <Button
-                        variant="outline"
-                        onClick={() => setPermissionsModalOpen(true)}
-                        className="gap-2"
-                      >
-                        <Settings className="h-4 w-4" />
-                        {t('configure')}
-                      </Button>
-                    </div>
+                      <CollapsibleContent className="animate-scale-in">
+                        <div className="mt-4 border rounded-md p-4 max-h-[50vh] overflow-y-auto">
+                          <PermissionEditor
+                            value={form.permission}
+                            onChange={(next) => setForm((prev) => ({ ...prev, permission: next }))}
+                          />
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
                   </div>
                 </div>
               </div>
@@ -553,26 +563,6 @@ export default function AgentsPage() {
               </DialogFooter>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={permissionsModalOpen} onOpenChange={setPermissionsModalOpen}>
-        <DialogContent className="max-w-4xl h-[85vh] !flex !flex-col p-0 overflow-hidden">
-          <DialogHeader className="p-6 border-b shrink-0">
-            <DialogTitle>{t('configurePermissions')}</DialogTitle>
-            <DialogDescription>
-              {t('permissionsDescription')}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 p-6 flex flex-col">
-            <PermissionEditor
-              value={form.permission}
-              onChange={(next) => setForm((prev) => ({ ...prev, permission: next }))}
-            />
-          </div>
-          <DialogFooter className="p-4 border-t bg-muted/20 shrink-0">
-            <Button onClick={() => setPermissionsModalOpen(false)}>{t('done')}</Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
