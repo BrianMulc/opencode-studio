@@ -30,8 +30,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Plus, ChevronDown, Sliders as Settings } from "@nsmr/pixelart-react";
+import { Plus } from "@nsmr/pixelart-react";
 
 const TOOL_OPTIONS = [
   "read",
@@ -124,7 +123,6 @@ export default function AgentsPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<AgentInfo | null>(null);
   const [open, setOpen] = useState(false);
-  const [permissionsModalOpen, setPermissionsModalOpen] = useState(false);
   const [form, setForm] = useState<AgentFormState>(emptyForm());
   const [helpOpen, setHelpOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -444,59 +442,6 @@ export default function AgentsPage() {
                 )}
               </div>
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>{t('toolsLabel')}</Label>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 text-[10px] px-2"
-                      onClick={() => {
-                        const perm = { ...form.permission };
-                        TOOL_OPTIONS.forEach(tool => { perm[tool as keyof PermissionConfig] = "allow"; });
-                        setForm(prev => ({ ...prev, permission: perm, tools: {} }));
-                      }}
-                    >
-                      {t('all')}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 text-[10px] px-2"
-                      onClick={() => {
-                        const perm = { ...form.permission };
-                        TOOL_OPTIONS.forEach(tool => { perm[tool as keyof PermissionConfig] = "deny"; });
-                        setForm(prev => ({ ...prev, permission: perm, tools: {} }));
-                      }}
-                    >
-                      {t('none')}
-                    </Button>
-                  </div>
-                </div>
-                <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 border rounded-md p-3 bg-muted/20">
-                  {TOOL_OPTIONS.map((tool) => {
-                    const permValue = form.permission[tool as keyof PermissionConfig];
-                    const checked = permValue === "allow" || (permValue === undefined && form.permission["*"] === "allow");
-                    return (
-                      <label key={tool} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/50 p-1 rounded transition-colors">
-                        <Switch
-                          checked={checked}
-                          onCheckedChange={(isChecked) =>
-                            setForm((prev) => ({
-                              ...prev,
-                              permission: { ...prev.permission, [tool]: isChecked ? "allow" : "deny" },
-                              tools: {},
-                            }))
-                          }
-                        />
-                        <span className="font-mono text-[10px] text-muted-foreground truncate">{tool}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
               <div className="flex flex-wrap items-center gap-4">
                 <label className="flex items-center gap-2 text-sm">
                   <Switch checked={!!form.disable} onCheckedChange={(checked) => setForm((prev) => ({ ...prev, disable: checked }))} />
@@ -513,7 +458,7 @@ export default function AgentsPage() {
                   <div className="space-y-2">
                     <Label>{t('systemPrompt')}</Label>
                     <Editor
-                      height="40vh"
+                      height="30vh"
                       language="markdown"
                       theme={theme === "dark" ? "vs-dark" : "light"}
                       value={form.prompt}
@@ -522,33 +467,19 @@ export default function AgentsPage() {
                     />
                   </div>
 
-                  <div className="space-y-4 pt-4 border-t">
-                    <Collapsible open={permissionsModalOpen} onOpenChange={setPermissionsModalOpen}>
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-0.5">
-                          <Label className="text-base">{t('toolPermissions')}</Label>
-                          <p className="text-xs text-muted-foreground">
-                            {t('toolPermissionsDescription')}
-                          </p>
-                        </div>
-                        <Button
-                          variant="outline"
-                          onClick={() => setPermissionsModalOpen(!permissionsModalOpen)}
-                          className="gap-2"
-                        >
-                          <Settings className="h-4 w-4" />
-                          {permissionsModalOpen ? t('cancel') : t('configure')}
-                        </Button>
-                      </div>
-                      <CollapsibleContent className="animate-scale-in">
-                        <div className="mt-4 border rounded-md p-4 max-h-[40vh] overflow-y-auto">
-                          <PermissionEditor
-                            value={form.permission}
-                            onChange={(next) => setForm((prev) => ({ ...prev, permission: next }))}
-                          />
-                        </div>
-                      </CollapsibleContent>
-                    </Collapsible>
+                  <div className="space-y-2 pt-4 border-t">
+                    <div className="space-y-0.5">
+                      <Label className="text-base">{t('toolPermissions')}</Label>
+                      <p className="text-xs text-muted-foreground">
+                        {t('toolPermissionsDescription')}
+                      </p>
+                    </div>
+                    <div className="border rounded-md p-4 max-h-[35vh] overflow-y-auto">
+                      <PermissionEditor
+                        value={form.permission}
+                        onChange={(next) => setForm((prev) => ({ ...prev, permission: next }))}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
