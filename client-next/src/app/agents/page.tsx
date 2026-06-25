@@ -452,20 +452,6 @@ export default function AgentsPage() {
                   {t('hidden')}
                 </label>
               </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>{t('systemPrompt')}</Label>
-                    <Editor
-                      height="30vh"
-                      language="markdown"
-                      theme={theme === "dark" ? "vs-dark" : "light"}
-                      value={form.prompt}
-                      onChange={(value) => setForm((prev) => ({ ...prev, prompt: value || "" }))}
-                      options={{ minimap: { enabled: false }, fontSize: 13, wordWrap: "on" }}
-                    />
-                  </div>
 
                   <div className="space-y-2 pt-4 border-t">
                     <div className="space-y-0.5">
@@ -480,6 +466,20 @@ export default function AgentsPage() {
                         onChange={(next) => setForm((prev) => ({ ...prev, permission: next }))}
                       />
                     </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>{t('systemPrompt')}</Label>
+                    <Editor
+                      height="60vh"
+                      language="markdown"
+                      theme={theme === "dark" ? "vs-dark" : "light"}
+                      value={form.prompt}
+                      onChange={(value) => setForm((prev) => ({ ...prev, prompt: value || "" }))}
+                      options={{ minimap: { enabled: false }, fontSize: 13, wordWrap: "on" }}
+                    />
                   </div>
                 </div>
               </div>
