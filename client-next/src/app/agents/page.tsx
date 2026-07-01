@@ -543,31 +543,14 @@ export default function AgentsPage() {
                       <Label>{t('systemPrompt')}</Label>
                       <div className="flex items-center gap-2">
                         <Select onValueChange={handleApplyPreset}>
-                          <SelectTrigger className="w-[200px] h-8 text-xs">
+                          <SelectTrigger className="w-[220px] h-8 text-xs">
                             <SelectValue placeholder={t('applyPreset')} />
                           </SelectTrigger>
                           <SelectContent>
                             {presets.map((preset) => (
-                              <div key={preset.id} className="flex items-center group pr-2">
-                                <SelectItem value={preset.id} className="flex-1">
-                                  <div className="flex flex-col">
-                                    <span className="text-sm">{preset.name}</span>
-                                    {preset.description && (
-                                      <span className="text-xs text-muted-foreground">{preset.description}</span>
-                                    )}
-                                  </div>
-                                </SelectItem>
-                                {!preset.builtin && (
-                                  <button
-                                    type="button"
-                                    className="opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive/80 ml-1 p-1"
-                                    onClick={(e) => { e.stopPropagation(); handleDeletePreset(preset.id); }}
-                                    title={t('deletePreset')}
-                                  >
-                                    ×
-                                  </button>
-                                )}
-                              </div>
+                              <SelectItem key={preset.id} value={preset.id} className="text-sm">
+                                {preset.name}
+                              </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -582,6 +565,7 @@ export default function AgentsPage() {
                         </Button>
                       </div>
                     </div>
+                    <p className="text-xs text-muted-foreground">{t('presetHint')}</p>
                     <Editor
                       height="60vh"
                       language="markdown"
