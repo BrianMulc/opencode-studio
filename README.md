@@ -38,17 +38,49 @@ visit [opencode.micr.dev](https://opencode.micr.dev) and click "Launch Backend" 
 
 #### option 2: fully local
 
-**windows**
+**windows (double-click install - no terminals)**
+
+1. Double-click `Install-OpenCode-Studio.vbs`
+   - Installs Node.js automatically if not present
+   - Installs all dependencies
+   - Creates Desktop and Start Menu shortcuts
+2. Double-click the **OpenCode Studio** shortcut on your Desktop
+   - No terminal windows appear
+   - Browser opens automatically at http://localhost:1080
+3. To stop: just close the browser tab - everything shuts down automatically
+
+**windows (manual)**
 ```batch
 quickstart.bat
 ```
 
-**macos / linux**
-```bash
-chmod +x quickstart.sh && ./quickstart.sh
-```
+**macos (double-click install - no terminals)**
 
-open http://localhost:1080
+1. Double-click `Install-OpenCode-Studio.command`
+   - Installs Homebrew + Node.js automatically if not present
+   - Installs all dependencies
+   - Creates OpenCode Studio.app in /Applications
+2. Open **OpenCode Studio** from /Applications, Launchpad, or Spotlight
+   - No terminal windows appear
+   - Browser opens automatically at http://localhost:1080
+3. To stop: just close the browser tab - everything shuts down automatically
+
+> Note: On first launch, macOS may ask you to confirm opening an app from an
+> unidentified developer. Right-click the app and select "Open".
+
+**linux (one-command install - no terminals)**
+
+```bash
+chmod +x Install-OpenCode-Studio.sh && ./Install-OpenCode-Studio.sh
+```
+- Installs Node.js automatically via your package manager (apt/dnf/yum/pacman/zypper/apk)
+- Installs all dependencies
+- Creates desktop shortcut and application menu entry
+
+Then open **OpenCode Studio** from your application menu or desktop shortcut.
+- No terminal windows appear
+- Browser opens automatically at http://localhost:1080
+- To stop: just close the browser tab - everything shuts down automatically
 
 ---
 

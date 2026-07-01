@@ -3,7 +3,7 @@
   "version": "2.5.0",
   "private": false,
   "scripts": {
-    "start": "concurrently \"npm run server\" \"npm run client\"",
+    "start": "npm run server",
     "server": "cd server && npm start",
     "client": "cd client-next && npm run dev",
     "build": "cd client-next && npm run build",

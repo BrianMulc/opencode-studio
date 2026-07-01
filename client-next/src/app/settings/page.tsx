@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { useApp } from "@/lib/context";
-import api, { getPaths, setConfigPath, getBackup, restoreBackup, getGitHubBackupStatus, backupToGitHub, restoreFromGitHub, setGitHubAutoSync, type PathsInfo, type BackupData } from "@/lib/api";
+import api, { getPaths, setConfigPath, getBackup, restoreBackup, getGitHubBackupStatus, backupToGitHub, restoreFromGitHub, setGitHubAutoSync, checkForUpdate, performUpdate, type PathsInfo, type BackupData, type UpdateCheckResult } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -25,7 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PermissionEditor } from "@/components/permission-editor";
-import { Sliders as Settings, Android, Download, Upload, Save, ChevronDown, Loader, Code, Github } from "@nsmr/pixelart-react";
+import { Sliders as Settings, Android, Download, Upload, Save, ChevronDown, Loader, Code, Github, Reload } from "@nsmr/pixelart-react";
 import { PageHelp } from "@/components/page-help";
 import { toast } from "sonner";
 import Editor from "@monaco-editor/react";
@@ -62,6 +62,7 @@ export default function SettingsPage() {
     advanced: false,
     prompts: false,
     backup: false,
+    updates: false,
   });
   
 const [systemPrompt, setSystemPrompt] = useState("");
@@ -76,6 +77,10 @@ const [systemPrompt, setSystemPrompt] = useState("");
   const [backingUp, setBackingUp] = useState(false);
   const [restoring, setRestoring] = useState(false);
 
+  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updating, setUpdating] = useState(false);
+
 
   const toggleSection = (section: string) => {
     setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
@@ -84,6 +89,7 @@ const [systemPrompt, setSystemPrompt] = useState("");
   useEffect(() => {
     getPaths().then(setPathsInfo).catch(console.error);
     loadSystemPrompt();
+    handleCheckUpdate(true); // silent - no toast, just populates the UI
 
     getGitHubBackupStatus().then(status => {
       setGhBackupStatus(status);
@@ -254,6 +260,38 @@ const [systemPrompt, setSystemPrompt] = useState("");
       toast.success(enabled ? t('toast.autoSyncEnabled') : t('toast.autoSyncDisabled'));
     } catch (err: any) {
       toast.error(err.response?.data?.error || err.message);
+    }
+  };
+
+  const handleCheckUpdate = async (silent = false) => {
+    setCheckingUpdate(true);
+    try {
+      const info = await checkForUpdate();
+      setUpdateInfo(info);
+      if (!silent) {
+        if (info.updateAvailable) {
+          toast.success(t('updates.available'));
+        } else {
+          toast.success(t('updates.upToDate'));
+        }
+      }
+    } catch (err: any) {
+      if (!silent) toast.error(err.response?.data?.error || err.message);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  const handlePerformUpdate = async () => {
+    setUpdating(true);
+    try {
+      const result = await performUpdate();
+      toast.success(result.message || t('updates.success'));
+      // Server will shut down after update; user needs to restart
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || err.message);
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -563,6 +601,105 @@ const [systemPrompt, setSystemPrompt] = useState("");
 
 
 
+      <Collapsible open={openSections.updates} onOpenChange={() => toggleSection("updates")}>
+        <Card className="hover-lift">
+          <CollapsibleTrigger asChild>
+            <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Reload className="h-5 w-5" />
+                  <CardTitle>{t('updates.title')}</CardTitle>
+                </div>
+                <div className="flex items-center gap-2">
+                  {updateInfo?.updateAvailable && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-500 font-medium">
+                      {t('updates.badge')}
+                    </span>
+                  )}
+                  <ChevronDown className={`h-5 w-5 transition-transform duration-200 ${openSections.updates ? "rotate-180" : ""}`} />
+                </div>
+              </div>
+              <CardDescription>{t('updates.description')}</CardDescription>
+            </CardHeader>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="animate-scale-in">
+            <CardContent className="space-y-4 pt-0">
+              {checkingUpdate ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : updateInfo ? (
+                <div className="space-y-4">
+                  <div className="p-4 bg-background rounded-lg space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">{t('updates.currentVersion')}</span>
+                      <span className="text-sm font-mono">v{updateInfo.version}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">{t('updates.localCommit')}</span>
+                      <span className="text-sm font-mono">{updateInfo.localHash}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">{t('updates.remoteCommit')}</span>
+                      <span className="text-sm font-mono">{updateInfo.remoteHash}</span>
+                    </div>
+                    {updateInfo.remoteDate && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">{t('updates.remoteDate')}</span>
+                        <span className="text-sm">{new Date(updateInfo.remoteDate).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {updateInfo.remoteMessage && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">{t('updates.latestChange')}</span>
+                        <span className="text-sm truncate max-w-[300px]">{updateInfo.remoteMessage}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {updateInfo.updateAvailable ? (
+                    <div className="space-y-3">
+                      <div className="p-4 bg-green-500/10 rounded-lg flex items-center gap-3">
+                        <Reload className="h-5 w-5 text-green-500" />
+                        <div>
+                          <p className="text-sm font-medium text-green-500">{t('updates.available')}</p>
+                          <p className="text-xs text-muted-foreground">{t('updates.availableDescription')}</p>
+                        </div>
+                      </div>
+                      <Button onClick={handlePerformUpdate} disabled={updating} className="w-full">
+                        {updating ? <Loader className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                        {updating ? t('updates.updating') : t('updates.updateNow')}
+                      </Button>
+                      {updating && (
+                        <p className="text-xs text-muted-foreground text-center">{t('updates.updatingDescription')}</p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-muted/30 rounded-lg flex items-center gap-3">
+                      <div className="h-2 w-2 rounded-full bg-green-500" />
+                      <p className="text-sm text-muted-foreground">{t('updates.upToDate')}</p>
+                    </div>
+                  )}
+
+                  <Button variant="outline" onClick={handleCheckUpdate} disabled={checkingUpdate} className="w-full">
+                    <Reload className="mr-2 h-4 w-4" />
+                    {t('updates.checkAgain')}
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">{t('updates.notCheckedYet')}</p>
+                  <Button variant="outline" onClick={handleCheckUpdate} disabled={checkingUpdate} className="w-full">
+                    {checkingUpdate ? <Loader className="mr-2 h-4 w-4 animate-spin" /> : <Reload className="mr-2 h-4 w-4" />}
+                    {t('updates.checkNow')}
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
+
       <Collapsible open={openSections.backup} onOpenChange={() => toggleSection("backup")}>
         <Card className="hover-lift">
           <CollapsibleTrigger asChild>
@@ -704,6 +841,7 @@ const [systemPrompt, setSystemPrompt] = useState("");
         </Card>
        </Collapsible>
 
+      <div className="pb-8" />
     </div>
   );
 }

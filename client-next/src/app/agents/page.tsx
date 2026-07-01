@@ -6,7 +6,7 @@ import { useTheme } from "next-themes";
 import { Editor } from "@monaco-editor/react";
 import { toast } from "sonner";
 import type { AgentConfig, AgentInfo, PermissionConfig } from "@/types";
-import { getAgents, saveAgent, deleteAgent, toggleAgent } from "@/lib/api";
+import { getAgents, saveAgent, deleteAgent, toggleAgent, getPromptPresets, savePromptPreset, deletePromptPreset, type PromptPreset, type AgentPresetConfig } from "@/lib/api";
 import { useErrorTranslation } from "@/lib/error-translate";
 import { cn } from "@/lib/utils";
 import { AgentCard } from "@/components/agent-card";
@@ -127,6 +127,10 @@ export default function AgentsPage() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<AgentInfo | null>(null);
+  const [presets, setPresets] = useState<PromptPreset[]>([]);
+  const [presetDialogOpen, setPresetDialogOpen] = useState(false);
+  const [presetName, setPresetName] = useState("");
+  const [presetDescription, setPresetDescription] = useState("");
 
   const filteredAgents = useMemo(() => agents, [agents]);
 
@@ -144,6 +148,7 @@ export default function AgentsPage() {
 
   useEffect(() => {
     loadAgents();
+    getPromptPresets().then(setPresets).catch(console.error);
   }, []);
 
   const openEditor = (agent?: AgentInfo) => {
@@ -257,6 +262,69 @@ export default function AgentsPage() {
       scope: "global",
     });
     setOpen(true);
+  };
+
+  const handleApplyPreset = (presetId: string) => {
+    const preset = presets.find(p => p.id === presetId);
+    if (preset && preset.config) {
+      const c = preset.config;
+      setForm((prev) => ({
+        ...prev,
+        description: c.description || '',
+        mode: (c.mode as AgentConfig["mode"]) || 'subagent',
+        model: c.model || '',
+        temperature: c.temperature ?? 0.3,
+        color: c.color || '',
+        permission: c.permission || { "*": "ask" },
+        disable: c.disable || false,
+        hidden: c.hidden || false,
+        prompt: c.prompt || '',
+        tools: deriveToolsFromPermission(c.permission || { "*": "ask" }, TOOL_OPTIONS),
+      }));
+      toast.success(t('presetApplied', { name: preset.name }));
+    }
+  };
+
+  const handleSavePreset = async () => {
+    if (!presetName.trim()) {
+      toast.error(t('presetNameRequired'));
+      return;
+    }
+    if (!form.prompt.trim()) {
+      toast.error(t('presetPromptEmpty'));
+      return;
+    }
+    const config: AgentPresetConfig = {
+      description: form.description,
+      mode: form.mode,
+      model: form.model,
+      temperature: form.temperature,
+      color: form.color,
+      permission: form.permission,
+      disable: form.disable,
+      hidden: form.hidden,
+      prompt: form.prompt,
+    };
+    try {
+      const result = await savePromptPreset(presetName.trim(), presetDescription.trim(), config);
+      setPresets(prev => [...prev, result.preset]);
+      toast.success(t('presetSaved'));
+      setPresetDialogOpen(false);
+      setPresetName("");
+      setPresetDescription("");
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || err.message);
+    }
+  };
+
+  const handleDeletePreset = async (presetId: string) => {
+    try {
+      await deletePromptPreset(presetId);
+      setPresets(prev => prev.filter(p => p.id !== presetId));
+      toast.success(t('presetDeleted'));
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || err.message);
+    }
   };
 
   return (
@@ -471,7 +539,49 @@ export default function AgentsPage() {
 
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label>{t('systemPrompt')}</Label>
+                    <div className="flex items-center justify-between">
+                      <Label>{t('systemPrompt')}</Label>
+                      <div className="flex items-center gap-2">
+                        <Select onValueChange={handleApplyPreset}>
+                          <SelectTrigger className="w-[200px] h-8 text-xs">
+                            <SelectValue placeholder={t('applyPreset')} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {presets.map((preset) => (
+                              <div key={preset.id} className="flex items-center group pr-2">
+                                <SelectItem value={preset.id} className="flex-1">
+                                  <div className="flex flex-col">
+                                    <span className="text-sm">{preset.name}</span>
+                                    {preset.description && (
+                                      <span className="text-xs text-muted-foreground">{preset.description}</span>
+                                    )}
+                                  </div>
+                                </SelectItem>
+                                {!preset.builtin && (
+                                  <button
+                                    type="button"
+                                    className="opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive/80 ml-1 p-1"
+                                    onClick={(e) => { e.stopPropagation(); handleDeletePreset(preset.id); }}
+                                    title={t('deletePreset')}
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs"
+                          onClick={() => setPresetDialogOpen(true)}
+                          disabled={!form.prompt.trim()}
+                        >
+                          {t('saveAsPreset')}
+                        </Button>
+                      </div>
+                    </div>
                     <Editor
                       height="60vh"
                       language="markdown"
@@ -498,6 +608,39 @@ export default function AgentsPage() {
       </Dialog>
 
       <PageHelpDialog open={helpOpen} onOpenChange={setHelpOpen} page="agents" />
+
+      <Dialog open={presetDialogOpen} onOpenChange={setPresetDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('savePresetTitle')}</DialogTitle>
+            <DialogDescription>{t('savePresetDescription')}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>{t('presetNameLabel')}</Label>
+              <Input
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                placeholder={t('presetNamePlaceholder')}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>{t('presetDescriptionLabel')}</Label>
+              <Input
+                value={presetDescription}
+                onChange={(e) => setPresetDescription(e.target.value)}
+                placeholder={t('presetDescriptionPlaceholder')}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPresetDialogOpen(false)}>
+              {t('cancel')}
+            </Button>
+            <Button onClick={handleSavePreset}>{t('savePreset')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

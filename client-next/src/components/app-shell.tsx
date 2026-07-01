@@ -3,7 +3,7 @@
 import { useApp } from "@/lib/context";
 import { Sidebar } from "@/components/sidebar";
 import { DebugMenu } from "@/components/debug-menu";
-import { PROTOCOL_URL } from "@/lib/api";
+import { PROTOCOL_URL, restartBackend } from "@/lib/api";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -48,6 +48,7 @@ function useLaunchAttempt() {
 
 function DisconnectedLanding({ isFirstLoad }: { isFirstLoad: boolean }) {
   const [showUpdateHint, setShowUpdateHint] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const { hasAttempted, markAttempt } = useLaunchAttempt();
   const t = useTranslations('appShell');
 
@@ -59,6 +60,17 @@ function DisconnectedLanding({ isFirstLoad }: { isFirstLoad: boolean }) {
   const handleLaunch = () => {
     markAttempt();
     window.location.href = PROTOCOL_URL;
+  };
+
+  const handleRestart = async () => {
+    setRestarting(true);
+    try {
+      await restartBackend();
+    } catch {}
+    // Wait a few seconds for the server to come back up, then reload
+    setTimeout(() => {
+      window.location.reload();
+    }, 5000);
   };
 
   const animClass = isFirstLoad ? "animate-logo-entrance" : "animate-logo-entrance-fast";
@@ -86,9 +98,9 @@ return (
 
         <div className="flex flex-col gap-3 w-full max-w-md">
           <div className={isFirstLoad ? "landing-delay-3" : "landing-delay-fast-3"}>
-            <Button size="lg" className="w-full gap-2" onClick={handleLaunch}>
-              <Play className="h-5 w-5" />
-              {t('landing.launchBackend')}
+            <Button size="lg" className="w-full gap-2" onClick={handleRestart} disabled={restarting}>
+              {restarting ? <Loader className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
+              {restarting ? t('landing.restarting') : t('landing.restartBackend')}
             </Button>
           </div>
           

@@ -117,20 +117,12 @@ function findAvailablePort(startPort) {
     });
 }
 
-let idleTimer = null;
-
-function resetIdleTimer() {
-    if (idleTimer) clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => {
-        console.log('Server idle for 30 minutes, shutting down...');
-        process.exit(0);
-    }, IDLE_TIMEOUT_MS);
-}
-
-resetIdleTimer();
-
+// Idle timer disabled - heartbeat system handles auto-shutdown instead.
+// The heartbeat endpoint (POST /api/heartbeat) is called every 30s by the
+// client. If no heartbeat arrives for 3 minutes, the server shuts down.
+// This is more reliable than the old idle timer which couldn't distinguish
+// between "user closed tab" and "user is just reading the page".
 app.use((req, res, next) => {
-    resetIdleTimer();
     next();
 });
 
@@ -206,20 +198,27 @@ function releaseServerLock() {
 }
 
 function setupServerLockCleanup() {
-    process.once('exit', releaseServerLock);
+    process.once('exit', () => {
+        try { if (clientProcess) clientProcess.kill('SIGTERM'); } catch {}
+        releaseServerLock();
+    });
     process.once('SIGINT', () => {
+        try { if (clientProcess) clientProcess.kill('SIGTERM'); } catch {}
         releaseServerLock();
         process.exit(0);
     });
     process.once('SIGTERM', () => {
+        try { if (clientProcess) clientProcess.kill('SIGTERM'); } catch {}
         releaseServerLock();
         process.exit(0);
     });
     process.once('uncaughtException', (err) => {
+        try { if (clientProcess) clientProcess.kill('SIGTERM'); } catch {}
         releaseServerLock();
         throw err;
     });
     process.once('unhandledRejection', (reason) => {
+        try { if (clientProcess) clientProcess.kill('SIGTERM'); } catch {}
         releaseServerLock();
         throw reason;
     });
@@ -1246,12 +1245,141 @@ const loadAggregatedConfig = () => {
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', version: SERVER_VERSION }));
 
-// Custom Harness router — mounted at /api/custom-harness
-app.use('/api/custom-harness', require('./custom-harness'));
-
 app.post('/api/shutdown', (req, res) => {
     res.json({ success: true });
     setTimeout(() => process.exit(0), 100);
+});
+
+// Restart: spawn a new server process then exit this one.
+// Pass OCS_SKIP_CLIENT_SPAWN=1 so the new server doesn't spawn another client
+// (the client is already running from the previous server instance).
+app.post('/api/restart', (req, res) => {
+    res.json({ success: true });
+    // Guard against multiple restart calls
+    if (process._restarting) return;
+    process._restarting = true;
+    releaseServerLock();
+    try { fs.unlinkSync(SERVER_LOCK_PATH); } catch {}
+    setTimeout(() => {
+        try {
+            const { spawn } = require('child_process');
+            spawn('node', ['index.js'], {
+                cwd: __dirname,
+                detached: true,
+                stdio: 'ignore',
+                windowsHide: true,
+                env: { ...process.env, OCS_SKIP_CLIENT_SPAWN: '1' }
+            }).unref();
+        } catch (err) {
+            console.error('[Restart] Failed to spawn new server:', err.message);
+        }
+        setTimeout(() => process.exit(0), 200);
+    }, 500);
+});
+
+// --- Heartbeat: client pings to keep server alive ---
+// When the browser tab closes, heartbeats stop. After HEARTBEAT_TIMEOUT_MS
+// with no ping, the server shuts itself down (and kills the client child process).
+let clientProcess = null;
+let lastHeartbeat = null; // null = not started yet; set when server starts listening
+let serverStartTime = null;
+const HEARTBEAT_TIMEOUT_MS = 180000; // 3 minutes with no ping = shut down (accounts for browser tab throttling)
+const HEARTBEAT_GRACE_MS = 90000;   // 90s grace period for initial client startup
+
+app.post('/api/heartbeat', (req, res) => {
+    lastHeartbeat = Date.now();
+    res.json({ ok: true });
+});
+
+// Check heartbeat every 3 seconds; if no ping for 15s, shut down
+// But only after the grace period (client needs time to boot Next.js)
+setInterval(() => {
+    if (lastHeartbeat === null) return; // server not fully started yet
+    const elapsed = Date.now() - lastHeartbeat;
+    // Use longer timeout during grace period (client is still booting)
+    const timeout = (Date.now() - serverStartTime < HEARTBEAT_GRACE_MS) ? HEARTBEAT_GRACE_MS : HEARTBEAT_TIMEOUT_MS;
+    if (elapsed > timeout) {
+        console.log(`[Heartbeat] No client heartbeat for ${Math.round(elapsed/1000)}s, shutting down server...`);
+        // Don't kill the client process - leave Next.js running so the user
+        // sees the "Backend disconnected" landing page and can restart.
+        setTimeout(() => process.exit(0), 200);
+    }
+}, 3000);
+
+// --- Update check & perform ---
+const UPDATE_REPO = 'BrianMulc/opencode-studio';
+const UPDATE_BRANCH = 'master';
+
+app.get('/api/update/check', async (req, res) => {
+    try {
+        // Get local commit hash
+        const localHash = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+        const localShort = localHash.substring(0, 7);
+
+        // Get remote commit hash via GitHub API
+        const https = require('https');
+        const fetchRemote = () => new Promise((resolve, reject) => {
+            https.get(`https://api.github.com/repos/${UPDATE_REPO}/commits/${UPDATE_BRANCH}`, {
+                headers: { 'User-Agent': 'opencode-studio' }
+            }, (resp) => {
+                let data = '';
+                resp.on('data', (chunk) => data += chunk);
+                resp.on('end', () => {
+                    try {
+                        const json = JSON.parse(data);
+                        resolve(json);
+                    } catch (e) { reject(e); }
+                });
+            }).on('error', reject);
+        });
+
+        const remoteInfo = await fetchRemote();
+        const remoteHash = remoteInfo.sha ? remoteInfo.sha.trim() : null;
+        const remoteShort = remoteHash ? remoteHash.substring(0, 7) : null;
+        const remoteDate = remoteInfo.commit ? remoteInfo.commit.committer.date : null;
+        const remoteMessage = remoteInfo.commit ? remoteInfo.commit.message : null;
+
+        const updateAvailable = remoteHash && remoteHash !== localHash;
+
+        res.json({
+            updateAvailable,
+            localHash: localShort,
+            remoteHash: remoteShort,
+            remoteDate,
+            remoteMessage: remoteMessage ? remoteMessage.split('\n')[0] : null,
+            repo: UPDATE_REPO,
+            branch: UPDATE_BRANCH,
+            version: SERVER_VERSION
+        });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to check for updates', details: err.message });
+    }
+});
+
+app.post('/api/update/perform', async (req, res) => {
+    try {
+        const projectRoot = path.join(__dirname, '..');
+
+        // Stash any local changes (e.g. node_modules, logs) then pull
+        try { execSync('git stash', { cwd: projectRoot, encoding: 'utf8' }); } catch {}
+        execSync('git fetch origin', { cwd: projectRoot, encoding: 'utf8', timeout: 30000 });
+        execSync(`git reset --hard origin/${UPDATE_BRANCH}`, { cwd: projectRoot, encoding: 'utf8' });
+
+        // Install dependencies
+        execSync('npm install', { cwd: projectRoot, encoding: 'utf8', timeout: 120000 });
+        execSync('npm install', { cwd: path.join(projectRoot, 'server'), encoding: 'utf8', timeout: 120000 });
+        execSync('npm install', { cwd: path.join(projectRoot, 'client-next'), encoding: 'utf8', timeout: 120000 });
+
+        res.json({ success: true, message: 'Update complete. Restart required.' });
+
+        // Shut down so the user can restart
+        setTimeout(() => {
+            try { if (clientProcess) clientProcess.kill('SIGTERM'); } catch {}
+            setTimeout(() => process.exit(0), 500);
+        }, 1000);
+    } catch (err) {
+        res.status(500).json({ error: 'Update failed', details: err.message });
+    }
 });
 
 app.get('/api/paths', (req, res) => res.json(getPaths()));
@@ -5689,6 +5817,57 @@ async function startServer() {
     const port = await findAvailablePort(DEFAULT_PORT);
     app.listen(port, () => {
         console.log(`Server running at http://localhost:${port}`);
+        serverStartTime = Date.now();
+        lastHeartbeat = Date.now(); // start the clock; grace period gives client time to boot
+
+        // Spawn the Next.js client as a child process (no terminal window needed)
+        // Skip if OCS_SKIP_CLIENT_SPAWN is set (e.g. on restart - client is already running)
+        if (process.env.OCS_SKIP_CLIENT_SPAWN === '1') {
+            console.log('[Server] Skipping client spawn (OCS_SKIP_CLIENT_SPAWN=1)');
+        } else {
+        try {
+            const clientDir = path.join(__dirname, '..', 'client-next');
+            const devScript = path.join(clientDir, 'dev-with-port.js');
+            if (fs.existsSync(devScript)) {
+                clientProcess = spawn('node', [devScript], {
+                    cwd: clientDir,
+                    stdio: 'pipe', // pipe so the process doesn't get killed
+                    detached: false,
+                    windowsHide: true // hide any console window on Windows
+                });
+                // Discard output so nothing shows in terminal
+                clientProcess.stdout.on('data', () => {});
+                clientProcess.stderr.on('data', () => {});
+                clientProcess.on('exit', (code) => {
+                    console.log(`Client process exited with code ${code}`);
+                    clientProcess = null;
+                });
+                console.log('Client process started');
+
+                // Poll for client readiness and open browser automatically
+                const frontendUrl = 'http://localhost:1080';
+                const checkClient = () => {
+                    const http = require('http');
+                    http.get(frontendUrl, (res) => {
+                        if (res.statusCode === 200) {
+                            console.log('[AutoOpen] Frontend ready, opening browser...');
+                            const openCmd = process.platform === 'win32' ? `start "" "${frontendUrl}"` : process.platform === 'darwin' ? `open "${frontendUrl}"` : `xdg-open "${frontendUrl}"`;
+                            exec(openCmd, () => {});
+                        }
+                    }).on('error', () => {
+                        // Not ready yet, try again in 2 seconds (up to 30 times = 60s)
+                        if (Date.now() - serverStartTime < 70000) {
+                            setTimeout(checkClient, 2000);
+                        }
+                    });
+                };
+                setTimeout(checkClient, 3000); // start checking after 3s
+            }
+        } catch (err) {
+            console.error('Failed to start client process:', err.message);
+        }
+        } // end else (not OCS_SKIP_CLIENT_SPAWN)
+
         // Initial sync on startup if enabled
         setTimeout(() => {
             const studio = loadStudioConfig();
@@ -5742,6 +5921,206 @@ app.post('/api/prompts/global', (req, res) => {
         res.json({ success: true });
     } catch (err) {
         console.error('[Prompts] Error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// --- Agent Prompt Presets ---
+// --- Agent Presets (full agent configs: mode, model, permissions, prompt, etc.) ---
+const PRESETS_PATH = path.join(HOME_DIR, '.config', 'opencode-studio', 'agent-presets.json');
+
+const BUILTIN_PRESETS = [
+    {
+        id: 'builtin-eevee',
+        name: 'EEVEE',
+        description: 'Default primary agent - concise, direct, proactive',
+        builtin: true,
+        config: {
+            description: 'Default primary agent',
+            mode: 'primary',
+            model: 'opencode-go/glm-5.2',
+            temperature: 0.3,
+            color: '',
+            permission: { "*": "ask", read: "allow", grep: "allow", lsp: "allow", websearch: "allow", edit: "allow", list: "allow", todoread: "allow", todowrite: "allow", task: "allow", bash: "allow", glob: "allow", skill: "allow", webfetch: "allow", external_directory: "allow", question: "allow" },
+            disable: false,
+            hidden: false,
+            prompt: `You are EEVEE, an AI agent running in OpenCode desktop app with access to tools for file operations, shell commands, web access, and delegation to subagents. Use the instructions below and the tools available to you to assist the user.
+
+# Tone and style
+You should be concise, direct, and to the point. When you run a non-trivial bash command, you should explain what the command does and why you are running it, to make sure the user understands what you are doing (this is especially important when you are running a command that will make changes to the user's system).
+Your responses can use GitHub-flavored markdown for formatting, and will be rendered using the CommonMark specification.
+Output text to communicate with the user; all text you output outside of tool use is displayed to the user. Only use tools to complete tasks.
+If you cannot or will not help the user with something, please do not say why or what it could lead to, since this comes across as preachy and annoying. Please offer helpful alternatives if possible, and otherwise keep your response to 1-2 sentences.
+
+# Honesty
+Never fabricate anything. If you are uncertain, say so. If you don't know, use tools or questions to find out rather than guessing.
+
+# Proactiveness
+You are allowed to be proactive, but only when the user asks you to do something. You should strive to strike a balance between:
+1. Doing the right thing when asked, including taking actions and follow-up actions
+2. Not surprising the user with actions you take without asking
+
+# Tool usage
+When multiple independent pieces of information are needed, batch your tool calls together in a single response rather than running them sequentially. When tool calls depend on each other, run them in order.
+
+# Delegation
+For multimodal tasks, delegate to the Multimodal agent`
+        }
+    },
+    {
+        id: 'builtin-multimodal',
+        name: 'Multimodal',
+        description: 'Extract information from files, images, and documents',
+        builtin: true,
+        config: {
+            description: 'Multimodal tasks.',
+            mode: 'subagent',
+            model: 'opencode-go/minimax-m3',
+            temperature: 0.3,
+            color: '',
+            permission: { "*": "ask", read: "allow", grep: "deny", lsp: "deny", websearch: "allow", list: "allow", todoread: "allow", task: "allow", todowrite: "allow", webfetch: "allow", skill: "allow", bash: "allow", external_directory: "allow", question: "deny", edit: "deny" },
+            disable: false,
+            hidden: false,
+            prompt: `Your job: examine the attached file(s) and extract ONLY what was requested.
+
+When multiple files are provided, analyze each and address the goal across all files. If the goal involves comparison, explicitly compare and contrast.
+
+When to use you:
+- Media files that need visual or document interpretation
+- Extracting specific information or summaries from documents
+- Describing visual content in images or diagrams
+- When analyzed/extracted data is needed, not raw file contents
+
+When NOT to use you:
+- Source code or plain text files needing exact contents
+- Files that need editing afterward
+- Simple file reading where no interpretation is needed
+
+How you work:
+1. Receive an attached file or image and a goal describing what to extract
+2. Analyze the attachment deeply
+3. Return ONLY the relevant extracted information
+4. The main agent never processes the raw file - you save context tokens
+
+For PDFs and documents: extract text, structure, tables, and data from specific sections
+For images: describe layouts, UI elements, text, diagrams, charts
+For diagrams: explain relationships, flows, architecture depicted
+
+Response rules:
+- Return extracted information directly, no preamble
+- If info not found, state clearly what's missing
+- Match the language of the request
+- Be thorough on the goal, concise on everything else
+
+Your output goes straight to the main agent for continued work.`
+        }
+    },
+    {
+        id: 'builtin-prometheus',
+        name: 'Prometheus',
+        description: 'Planning consultant - turns vague requests into decision-complete plans',
+        builtin: true,
+        config: {
+            description: 'Plan then execute.',
+            mode: 'primary',
+            model: 'opencode-go/glm-5.2',
+            temperature: 0.3,
+            color: 'info',
+            permission: { "*": "ask", read: "allow", grep: "allow", lsp: "allow", websearch: "allow", list: "allow", todoread: "allow", todowrite: "allow", task: "allow", glob: "allow", skill: "allow", webfetch: "allow", edit: "allow", bash: "allow", question: "allow", external_directory: "allow" },
+            disable: false,
+            hidden: false,
+            prompt: `You are **Prometheus**, a planning consultant. You turn a vague or large request into ONE **decision-complete** work plan then execute upon final user approval. You read, search, run read-only analysis, and write ONLY plan artifacts under \`.eevee/\`. You are a PLANNER FIRST - you never edit and never implement until final user approval.
+
+**Plan mode is sticky.** "do X" / "fix X" / "build X" / "just do it" all mean "plan X". You **never start implementation** - not for small, obvious, or urgent work. Execution is the worker's job and begins only when the user explicitly starts it by using the EEVEE agent.
+
+## INTENT ROUTING
+
+- **OVERRIDE - explicit ask wins:** if the user explicitly asks to be questioned or interviewed ("ask me", "interview me", "why aren't you asking me")
+
+- **CLEAR** - the user knows the outcome; the only open items are preferences/tradeoffs the evidence cannot answer (genuine owner-decisions).
+
+<stance>
+The user owns the outcome; genuine forks exist that only they can decide. Research first to ground, THEN ask the surviving forks. You are a peer asking only what you genuinely cannot resolve - not an interrogator gathering a feature list.
+</stance>
+
+<research_protocol>
+Explore-before-asking. Dispatch parallel read-only research in one turn. Use direct tools while it runs. Facts-vs-decisions triage in FRONT of the two filters: if tools can answer it, explore and present cited confirmation, never a question; if only the user can answer it, it may proceed to the interview; if you cannot tell who answers it, treat it as a user-decision.
+</research_protocol>
+
+## Universal invariants
+
+- **Decision-complete is the north star.** When writing plans, assume the executor has NO interview context - spell out exact paths, "every X in Y", and an explicit Must-Not-Have. Leave the implementer ZERO judgment calls.
+- **Explore before asking.** Discoverable facts -> research and cite. Preferences/tradeoffs -> bring to the user.
+- **Approval is not execution.** Approval authorizes writing the plan ONLY, never implementation.
+- **The durable draft is the resume point.** Record decisions, the approval gate, and the ledgers to \`.eevee/drafts/<slug>.md\` as you go.
+
+## Stop rules
+
+- Plan file exists, every todo has references + acceptance + QA + commit, dependency matrix consistent: present the summary and stop. **Never begin execution yourself until user has explicitly told you to**.`
+        }
+    }
+];
+
+function loadPresets() {
+    try {
+        if (fs.existsSync(PRESETS_PATH)) {
+            const userPresets = JSON.parse(fs.readFileSync(PRESETS_PATH, 'utf8'));
+            return [...BUILTIN_PRESETS, ...userPresets];
+        }
+    } catch (err) {
+        console.error('[Presets] Error loading:', err.message);
+    }
+    return [...BUILTIN_PRESETS];
+}
+
+function saveUserPresets(presets) {
+    const dir = path.dirname(PRESETS_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    atomicWriteFileSync(PRESETS_PATH, JSON.stringify(presets, null, 2));
+}
+
+app.get('/api/prompt-presets', (req, res) => { res.json({ presets: loadPresets() }); });
+
+app.post('/api/prompt-presets', (req, res) => {
+    const { name, description, config } = req.body;
+    if (!name || !config) {
+        return res.status(400).json({ error: 'Name and config are required' });
+    }
+    try {
+        const userPresets = [];
+        if (fs.existsSync(PRESETS_PATH)) {
+            userPresets.push(...JSON.parse(fs.readFileSync(PRESETS_PATH, 'utf8')));
+        }
+        const newPreset = {
+            id: `user-${Date.now()}`,
+            name,
+            description: description || '',
+            builtin: false,
+            config
+        };
+        userPresets.push(newPreset);
+        saveUserPresets(userPresets);
+        res.json({ success: true, preset: newPreset });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/api/prompt-presets/:id', (req, res) => {
+    const presetId = req.params.id;
+    try {
+        if (!fs.existsSync(PRESETS_PATH)) {
+            return res.status(404).json({ error: 'Preset not found' });
+        }
+        let userPresets = JSON.parse(fs.readFileSync(PRESETS_PATH, 'utf8'));
+        const before = userPresets.length;
+        userPresets = userPresets.filter(p => p.id !== presetId);
+        if (userPresets.length === before) {
+            return res.status(404).json({ error: 'Preset not found (or is built-in)' });
+        }
+        saveUserPresets(userPresets);
+        res.json({ success: true });
+    } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });

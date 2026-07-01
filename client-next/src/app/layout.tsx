@@ -7,6 +7,7 @@ import { AppProvider } from "@/lib/context";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { PendingActionDialog } from "@/components/pending-action-dialog";
+import { Heartbeat } from "@/components/heartbeat";
 import { getTranslations, getMessages } from "next-intl/server";
 import { NextIntlClientProvider } from "next-intl";
 
@@ -161,6 +162,7 @@ export default async function RootLayout({
                 {children}
               </AppShell>
               <PendingActionDialog />
+              <Heartbeat />
               <Toaster />
             </AppProvider>
           </ThemeProvider>

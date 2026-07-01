@@ -1,4 +1,5 @@
 const net = require('net');
+const path = require('path');
 const { spawn } = require('child_process');
 const DEFAULT_PORT = 1080;
 
@@ -19,9 +20,11 @@ findAvailablePort(DEFAULT_PORT).then(port => {
     process.env.PORT = port.toString();
     console.log(`Starting Next.js on port ${port}`);
 
-    const dev = spawn('npx', ['next', 'dev'], {
+    // Use the local next binary directly (avoids npx spawning a sub-shell/window)
+    const nextBin = path.join(__dirname, 'node_modules', 'next', 'dist', 'bin', 'next');
+    const dev = spawn('node', [nextBin, 'dev'], {
         stdio: 'inherit',
-        shell: true
+        windowsHide: true
     });
 
     dev.on('error', (err) => {

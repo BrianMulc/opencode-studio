@@ -1,16 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Server, Gamepad, Code, Sliders, File, Lock, Command, Forward, Circle, Play, Power, ChartBar, CardStack, List } from "@nsmr/pixelart-react";
+import { Server, Gamepad, Code, Sliders, File, Lock, Command, Forward, Circle, Play, Power, ChartBar, CardStack, List, Reload } from "@nsmr/pixelart-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 import { useApp } from "@/lib/context";
-import { PROTOCOL_URL, shutdownBackend } from "@/lib/api";
+import { PROTOCOL_URL, shutdownBackend, checkForUpdate, type UpdateCheckResult } from "@/lib/api";
 import { useTranslations } from "next-intl";
 import {
   Tooltip,
@@ -36,7 +36,6 @@ const navItems = [
   { href: "/plugins", label: "nav.plugins", icon: Code },
   { href: "/commands", label: "nav.commands", icon: Command },
   { href: "/agents", label: "nav.agents", icon: List },
-  { href: "/custom-harness", label: "nav.customHarness", icon: CardStack },
   { href: "/logs", label: "nav.logs", icon: File },
   { href: "/rules", label: "nav.rules", icon: Sliders },
   { href: "/settings/code", label: "nav.codeSettings", icon: Code },
@@ -55,6 +54,17 @@ export function Sidebar() {
   const { connected } = useApp();
   const t = useTranslations('sidebar');
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+
+  useEffect(() => {
+    // Silent check for updates on sidebar mount
+    checkForUpdate().then(info => setUpdateAvailable(info.updateAvailable)).catch(() => {});
+    // Re-check every 10 minutes
+    const interval = setInterval(() => {
+      checkForUpdate().then(info => setUpdateAvailable(info.updateAvailable)).catch(() => {});
+    }, 10 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleLaunchBackend = () => {
     window.location.href = PROTOCOL_URL;
@@ -165,6 +175,21 @@ export function Sidebar() {
             </span>
           </div>
           <div className="flex items-center gap-1">
+            {updateAvailable && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" asChild className="relative">
+                    <Link href="/settings">
+                      <Reload className="h-4 w-4 text-green-500" />
+                      <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                    </Link>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{t('tooltips.updateAvailable')}</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
             {!connected && (
               <Tooltip>
                 <TooltipTrigger asChild>

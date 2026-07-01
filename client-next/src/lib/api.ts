@@ -176,6 +176,74 @@ export async function shutdownBackend(): Promise<void> {
   } catch {}
 }
 
+export async function restartBackend(): Promise<void> {
+  try {
+    await api.post('/restart');
+  } catch {}
+}
+
+export async function sendHeartbeat(): Promise<void> {
+  try {
+    await api.post('/heartbeat');
+  } catch {}
+}
+
+export interface UpdateCheckResult {
+  updateAvailable: boolean;
+  localHash: string;
+  remoteHash: string;
+  remoteDate: string | null;
+  remoteMessage: string | null;
+  repo: string;
+  branch: string;
+  version: string;
+}
+
+export async function checkForUpdate(): Promise<UpdateCheckResult> {
+  const { data } = await api.get<UpdateCheckResult>('/update/check');
+  return data;
+}
+
+export async function performUpdate(): Promise<{ success: boolean; message: string }> {
+  const { data } = await api.post<{ success: boolean; message: string }>('/update/perform');
+  return data;
+}
+
+export interface AgentPresetConfig {
+  description: string;
+  mode: string;
+  model: string;
+  temperature: number;
+  color: string;
+  permission: Record<string, string>;
+  disable: boolean;
+  hidden: boolean;
+  prompt: string;
+}
+
+export interface PromptPreset {
+  id: string;
+  name: string;
+  description: string;
+  builtin: boolean;
+  config: AgentPresetConfig;
+}
+
+export async function getPromptPresets(): Promise<PromptPreset[]> {
+  const { data } = await api.get<{ presets: PromptPreset[] }>('/prompt-presets');
+  return data.presets;
+}
+
+export async function savePromptPreset(name: string, description: string, config: AgentPresetConfig): Promise<{ success: boolean; preset: PromptPreset }> {
+  const { data } = await api.post<{ success: boolean; preset: PromptPreset }>('/prompt-presets', { name, description, config });
+  return data;
+}
+
+export async function deletePromptPreset(id: string): Promise<{ success: boolean }> {
+  const { data } = await api.delete<{ success: boolean }>(`/prompt-presets/${encodeURIComponent(id)}`);
+  return data;
+}
+
 export interface PathsInfo {
   detected: string | null;
   manual: string | null;
@@ -803,67 +871,6 @@ export async function duplicateProfile(name: string, newName?: string): Promise<
 
 export async function renameProfile(name: string, newName: string): Promise<{ success: boolean; newName: string; profiles: string[]; active: string | null }> {
   const { data } = await api.put(`/profiles/${encodeURIComponent(name)}`, { newName });
-  return data;
-}
-
-export interface CustomHarnessProfile {
-  name: string;
-  createdAt: string | null;
-  source: string | null;
-  hasSource: boolean;
-  hasConfig: boolean;
-  path: string;
-}
-
-export interface CustomHarnessProfileList {
-  profiles: CustomHarnessProfile[];
-}
-
-export async function getCustomHarnessProfiles(): Promise<CustomHarnessProfileList> {
-  const { data } = await api.get<CustomHarnessProfileList>('/custom-harness/list');
-  return data;
-}
-
-export async function createCustomHarnessProfile(name: string, source: 'latest' | 'copy-existing'): Promise<{ ok: boolean; profile: CustomHarnessProfile }> {
-  const { data } = await api.post<{ ok: boolean; profile: CustomHarnessProfile }>('/custom-harness/create', { name, source });
-  return data;
-}
-
-export async function deleteCustomHarnessProfile(name: string): Promise<{ ok: boolean; name: string }> {
-  const { data } = await api.delete<{ ok: boolean; name: string }>(`/custom-harness/${encodeURIComponent(name)}`);
-  return data;
-}
-
-export async function getCustomHarnessProfile(name: string): Promise<{ ok: boolean; profile: CustomHarnessProfile }> {
-  const { data } = await api.get<{ ok: boolean; profile: CustomHarnessProfile }>(`/custom-harness/${encodeURIComponent(name)}`);
-  return data;
-}
-
-export async function getCustomHarnessConfig(name: string): Promise<{ ok: boolean; config: Record<string, unknown>; path: string }> {
-  const { data } = await api.get<{ ok: boolean; config: Record<string, unknown>; path: string }>(`/custom-harness/${encodeURIComponent(name)}/config`);
-  return data;
-}
-
-export async function saveCustomHarnessConfig(name: string, config: Record<string, unknown>): Promise<{ ok: boolean; message: string }> {
-  const { data } = await api.put<{ ok: boolean; message: string }>(`/custom-harness/${encodeURIComponent(name)}/config`, { config });
-  return data;
-}
-
-export async function getSourceFile(name: string, filePath: string): Promise<{ ok: boolean; content: string; path: string }> {
-  const { data } = await api.get<{ ok: boolean; content: string; path: string }>(`/custom-harness/${encodeURIComponent(name)}/source/${filePath}`);
-  return data;
-}
-
-export async function saveSourceFile(name: string, filePath: string, content: string): Promise<{ ok: boolean; message: string }> {
-  const { data } = await api.put<{ ok: boolean; message: string }>(`/custom-harness/${encodeURIComponent(name)}/source/${filePath}`, { content });
-  return data;
-}
-
-export async function getSourceFiles(name: string, subPath?: string): Promise<{ ok: boolean; files: Array<{ name: string; isDirectory: boolean; path: string }> }> {
-  const { data } = await api.get<{ ok: boolean; files: Array<{ name: string; isDirectory: boolean; path: string }> }>(
-    `/custom-harness/${encodeURIComponent(name)}/source-files`,
-    { params: { path: subPath } }
-  );
   return data;
 }
 
