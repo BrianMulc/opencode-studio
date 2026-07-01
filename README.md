@@ -40,7 +40,7 @@ visit [opencode.micr.dev](https://opencode.micr.dev) and click "Launch Backend" 
 
 **windows (double-click install - no terminals)**
 
-1. Double-click `Install-OpenCode-Studio.vbs`
+1. Double-click `Install-OpenCode-Studio-Windows.vbs`
    - Installs Node.js automatically if not present
    - Installs all dependencies
    - Creates Desktop and Start Menu shortcuts
@@ -61,8 +61,8 @@ permission. Open Terminal and run:
 
 ```bash
 cd /path/to/opencode-studio
-chmod +x Install-OpenCode-Studio.command
-./Install-OpenCode-Studio.command
+chmod +x Install-OpenCode-Studio-Mac.command
+./Install-OpenCode-Studio-Mac.command
 ```
 
 - Installs Node.js 20+ automatically (Homebrew or .pkg from nodejs.org)
@@ -81,7 +81,7 @@ Then open **OpenCode Studio** from /Applications, Launchpad, or Spotlight.
 **linux (one-command install - no terminals)**
 
 ```bash
-chmod +x Install-OpenCode-Studio.sh && ./Install-OpenCode-Studio.sh
+chmod +x Install-OpenCode-Studio-Linux.sh && ./Install-OpenCode-Studio-Linux.sh
 ```
 - Installs Node.js automatically via your package manager (apt/dnf/yum/pacman/zypper/apk)
 - Installs all dependencies
