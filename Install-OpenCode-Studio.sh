@@ -26,21 +26,43 @@ echo "   OpenCode Studio - Linux Setup"
 echo "=========================================="
 echo ""
 
+# --- Helper: check Node.js version is 20+ ---
+check_node_version() {
+    if ! command -v node &> /dev/null; then
+        return 1
+    fi
+    local MAJOR
+    MAJOR=$(node -v | sed 's/v//' | cut -d. -f1)
+    if [ "$MAJOR" -lt 20 ]; then
+        return 2
+    fi
+    return 0
+}
+
 # --- Check / install Node.js ---
-if command -v node &> /dev/null; then
-    NODE_VERSION=$(node -v)
-    echo "[OK] Node.js found: $NODE_VERSION"
+check_node_version
+NODE_STATUS=$?
+
+if [ $NODE_STATUS -eq 0 ]; then
+    echo "[OK] Node.js found: $(node -v)"
+elif [ $NODE_STATUS -eq 2 ]; then
+    echo "[!] Node.js $(node -v) found, but version 20+ is required."
+    echo "    Please upgrade Node.js from https://nodejs.org/"
+    echo "    Or use Node Version Manager: nvm install 22 && nvm use 22"
+    exit 1
 else
     echo "[!] Node.js is not installed."
     echo "    Attempting to install via your package manager..."
     echo ""
 
     # Detect package manager and install Node.js
+    # Note: some distros ship old Node versions. We try NodeSource for apt.
     if command -v apt-get &> /dev/null; then
-        # Debian/Ubuntu/Mint
+        # Debian/Ubuntu/Mint - use NodeSource for Node 22
         echo "Detected: apt (Debian/Ubuntu)"
-        sudo apt-get update
-        sudo apt-get install -y nodejs npm
+        echo "Installing Node.js 22 via NodeSource..."
+        curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+        sudo apt-get install -y nodejs
     elif command -v dnf &> /dev/null; then
         # Fedora/RHEL
         echo "Detected: dnf (Fedora/RHEL)"
@@ -48,9 +70,10 @@ else
     elif command -v yum &> /dev/null; then
         # Older RHEL/CentOS
         echo "Detected: yum (RHEL/CentOS)"
-        sudo yum install -y nodejs npm
+        curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo -E bash -
+        sudo yum install -y nodejs
     elif command -v pacman &> /dev/null; then
-        # Arch/Manjaro
+        # Arch/Manjaro (usually has recent Node)
         echo "Detected: pacman (Arch)"
         sudo pacman -S --noconfirm nodejs npm
     elif command -v zypper &> /dev/null; then
@@ -63,15 +86,17 @@ else
         sudo apk add nodejs npm
     else
         echo "ERROR: Could not detect your package manager."
-        echo "Please install Node.js manually from https://nodejs.org/"
+        echo "Please install Node.js 20+ manually from https://nodejs.org/"
         echo "Then run this installer again."
         exit 1
     fi
 
-    # Verify installation
-    if ! command -v node &> /dev/null; then
-        echo "ERROR: Node.js installation failed."
-        echo "Please install Node.js manually from https://nodejs.org/"
+    # Verify installation and version
+    check_node_version
+    if [ $? -ne 0 ]; then
+        echo "ERROR: Node.js 20+ installation failed."
+        echo "Please install Node.js 20+ manually from https://nodejs.org/"
+        echo "Or use nvm: curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash && nvm install 22"
         exit 1
     fi
     echo "[OK] Node.js installed: $(node -v)"

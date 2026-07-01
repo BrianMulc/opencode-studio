@@ -64,9 +64,13 @@ If Not HasNode() Then
         psScript = "$ProgressPreference='SilentlyContinue';" & _
                     "Write-Host '=== OpenCode Studio Setup ===' -ForegroundColor Cyan;" & _
                     "Write-Host '';" & _
-                    "Write-Host 'Downloading Node.js LTS...' -ForegroundColor Yellow;" & _
+                    "Write-Host 'Fetching latest Node.js LTS version...' -ForegroundColor Yellow;" & _
                     "try {" & _
-                    "  $nodeUrl = 'https://nodejs.org/dist/v22.16.0/node-v22.16.0-x64.msi';" & _
+                    "  $ltsInfo = Invoke-RestMethod -Uri 'https://nodejs.org/dist/index.json' -ErrorAction Stop;" & _
+                    "  $ltsVersion = ($ltsInfo | Where-Object { $_.lts -ne $false } | Select-Object -First 1).version;" & _
+                    "  if (-not $ltsVersion) { $ltsVersion = 'v22.16.0' };" & _
+                    "  Write-Host ""Downloading Node.js $ltsVersion..."" -ForegroundColor Yellow;" & _
+                    "  $nodeUrl = ""https://nodejs.org/dist/$ltsVersion/node-$ltsVersion-x64.msi"";" & _
                     "  Invoke-WebRequest -Uri $nodeUrl -OutFile $env:TEMP\node-install.msi -ErrorAction Stop;" & _
                     "  Write-Host 'Installing Node.js (this may take a minute)...' -ForegroundColor Yellow;" & _
                     "  Start-Process msiexec.exe -ArgumentList '/i',""$env:TEMP\node-install.msi"",'/quiet','/norestart' -Wait;" & _

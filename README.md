@@ -54,19 +54,29 @@ visit [opencode.micr.dev](https://opencode.micr.dev) and click "Launch Backend" 
 quickstart.bat
 ```
 
-**macos (double-click install - no terminals)**
+**macos (one-command install - no terminals)**
 
-1. Double-click `Install-OpenCode-Studio.command`
-   - Installs Homebrew + Node.js automatically if not present
-   - Installs all dependencies
-   - Creates OpenCode Studio.app in /Applications
-2. Open **OpenCode Studio** from /Applications, Launchpad, or Spotlight
-   - No terminal windows appear
-   - Browser opens automatically at http://localhost:1080
-3. To stop: just close the browser tab - everything shuts down automatically
+If you downloaded the repo as a zip, the installer won't have execute
+permission. Open Terminal and run:
 
-> Note: On first launch, macOS may ask you to confirm opening an app from an
-> unidentified developer. Right-click the app and select "Open".
+```bash
+cd /path/to/opencode-studio
+chmod +x Install-OpenCode-Studio.command
+./Install-OpenCode-Studio.command
+```
+
+- Installs Node.js 20+ automatically (Homebrew or .pkg from nodejs.org)
+- Installs all dependencies
+- Creates OpenCode Studio.app in /Applications
+
+Then open **OpenCode Studio** from /Applications, Launchpad, or Spotlight.
+- No terminal windows appear
+- Browser opens automatically at http://localhost:1080
+- To stop: just close the browser tab - everything shuts down automatically
+
+> Note: On first launch, macOS Gatekeeper may block the app because it is
+> from an unidentified developer. Right-click the app → select "Open" →
+> click "Open" in the dialog. After this it will open normally.
 
 **linux (one-command install - no terminals)**
 
