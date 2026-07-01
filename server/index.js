@@ -5938,7 +5938,7 @@ const BUILTIN_PRESETS = [
         config: {
             description: 'Default primary agent',
             mode: 'primary',
-            model: 'opencode-go/glm-5.2',
+            model: 'opencode/glm-5.2',
             temperature: 0.3,
             color: '',
             permission: { "*": "ask", read: "allow", grep: "allow", lsp: "allow", websearch: "allow", edit: "allow", list: "allow", todoread: "allow", todowrite: "allow", task: "allow", bash: "allow", glob: "allow", skill: "allow", webfetch: "allow", external_directory: "allow", question: "allow" },
@@ -5975,7 +5975,7 @@ For multimodal tasks, delegate to the Multimodal agent`
         config: {
             description: 'Multimodal tasks.',
             mode: 'subagent',
-            model: 'opencode-go/minimax-m3',
+            model: 'opencode/minimax-m3',
             temperature: 0.3,
             color: '',
             permission: { "*": "ask", read: "allow", grep: "deny", lsp: "deny", websearch: "allow", list: "allow", todoread: "allow", task: "allow", todowrite: "allow", webfetch: "allow", skill: "allow", bash: "allow", external_directory: "allow", question: "deny", edit: "deny" },
@@ -6023,7 +6023,7 @@ Your output goes straight to the main agent for continued work.`
         config: {
             description: 'Plan then execute.',
             mode: 'primary',
-            model: 'opencode-go/glm-5.2',
+            model: 'opencode/glm-5.2',
             temperature: 0.3,
             color: 'info',
             permission: { "*": "ask", read: "allow", grep: "allow", lsp: "allow", websearch: "allow", list: "allow", todoread: "allow", todowrite: "allow", task: "allow", glob: "allow", skill: "allow", webfetch: "allow", edit: "allow", bash: "allow", question: "allow", external_directory: "allow" },
