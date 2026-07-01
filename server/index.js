@@ -5932,7 +5932,7 @@ const PRESETS_PATH = path.join(HOME_DIR, '.config', 'opencode-studio', 'agent-pr
 const BUILTIN_PRESETS = [
     {
         id: 'builtin-eevee',
-        name: 'EEVEE',
+        name: 'Orchestrator',
         description: 'Default primary agent - concise, direct, proactive',
         builtin: true,
         config: {
@@ -6017,7 +6017,7 @@ Your output goes straight to the main agent for continued work.`
     },
     {
         id: 'builtin-prometheus',
-        name: 'Prometheus',
+        name: 'Planner',
         description: 'Planning consultant - turns vague requests into decision-complete plans',
         builtin: true,
         config: {

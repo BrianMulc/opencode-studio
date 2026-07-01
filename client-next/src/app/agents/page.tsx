@@ -203,7 +203,17 @@ export default function AgentsPage() {
     };
 
     try {
-      await saveAgent(editing?.name || form.name.trim(), payload, form.source, form.scope);
+      const newName = form.name.trim();
+      const oldName = editing?.name;
+      // If renaming an existing agent, delete the old one first
+      if (oldName && oldName !== newName) {
+        await deleteAgent(oldName);
+      }
+      await saveAgent(oldName || newName, payload, form.source, form.scope);
+      // If renamed, save with the new name
+      if (oldName && oldName !== newName) {
+        await saveAgent(newName, payload, form.source, form.scope);
+      }
       toast.success(editing ? t('updated') : t('created'));
       setOpen(false);
       setEditing(null);
@@ -377,7 +387,6 @@ export default function AgentsPage() {
                     value={form.name}
                     onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
                     placeholder={t('namePlaceholder')}
-                    disabled={!!editing}
                   />
                 </div>
                 <div className="space-y-2">
