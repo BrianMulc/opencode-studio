@@ -1309,44 +1309,87 @@ setInterval(() => {
 // --- Update check & perform ---
 const UPDATE_REPO = 'BrianMulc/opencode-studio';
 const UPDATE_BRANCH = 'master';
+const UPDATE_GIT_URL = `https://github.com/${UPDATE_REPO}.git`;
+const UPDATE_RAW_PKG_URL = `https://raw.githubusercontent.com/${UPDATE_REPO}/${UPDATE_BRANCH}/server/package.json`;
+
+function httpsGetJson(url, headers = {}) {
+    const https = require('https');
+    return new Promise((resolve, reject) => {
+        https.get(url, { headers: { 'User-Agent': 'opencode-studio', ...headers } }, (resp) => {
+            let data = '';
+            resp.on('data', (chunk) => data += chunk);
+            resp.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(e); } });
+        }).on('error', reject);
+    });
+}
+
+function httpsGetText(url, headers = {}) {
+    const https = require('https');
+    return new Promise((resolve, reject) => {
+        https.get(url, { headers: { 'User-Agent': 'opencode-studio', ...headers } }, (resp) => {
+            let data = '';
+            resp.on('data', (chunk) => data += chunk);
+            resp.on('end', () => resolve(data));
+        }).on('error', reject);
+    });
+}
+
+function isGitRepo(dir) {
+    try {
+        execSync('git rev-parse --is-inside-work-tree', { cwd: dir, encoding: 'utf8', stdio: 'pipe' });
+        return true;
+    } catch { return false; }
+}
+
+function hasGit() {
+    try {
+        execSync('git --version', { encoding: 'utf8', stdio: 'pipe' });
+        return true;
+    } catch { return false; }
+}
 
 app.get('/api/update/check', async (req, res) => {
     try {
-        // Get local commit hash
-        const localHash = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
-        const localShort = localHash.substring(0, 7);
+        const projectRoot = path.join(__dirname, '..');
+        const gitRepo = isGitRepo(projectRoot);
 
-        // Get remote commit hash via GitHub API
-        const https = require('https');
-        const fetchRemote = () => new Promise((resolve, reject) => {
-            https.get(`https://api.github.com/repos/${UPDATE_REPO}/commits/${UPDATE_BRANCH}`, {
-                headers: { 'User-Agent': 'opencode-studio' }
-            }, (resp) => {
-                let data = '';
-                resp.on('data', (chunk) => data += chunk);
-                resp.on('end', () => {
-                    try {
-                        const json = JSON.parse(data);
-                        resolve(json);
-                    } catch (e) { reject(e); }
-                });
-            }).on('error', reject);
-        });
+        // Local commit hash (only for git clones)
+        let localHash = null;
+        if (gitRepo) {
+            try { localHash = execSync('git rev-parse HEAD', { cwd: projectRoot, encoding: 'utf8' }).trim(); } catch {}
+        }
 
-        const remoteInfo = await fetchRemote();
-        const remoteHash = remoteInfo.sha ? remoteInfo.sha.trim() : null;
-        const remoteShort = remoteHash ? remoteHash.substring(0, 7) : null;
-        const remoteDate = remoteInfo.commit ? remoteInfo.commit.committer.date : null;
-        const remoteMessage = remoteInfo.commit ? remoteInfo.commit.message : null;
+        // Remote commit info via GitHub API
+        let remoteHash = null, remoteDate = null, remoteMessage = null;
+        try {
+            const remoteInfo = await httpsGetJson(`https://api.github.com/repos/${UPDATE_REPO}/commits/${UPDATE_BRANCH}`);
+            remoteHash = remoteInfo.sha ? remoteInfo.sha.trim() : null;
+            remoteDate = remoteInfo.commit ? remoteInfo.commit.committer.date : null;
+            remoteMessage = remoteInfo.commit ? remoteInfo.commit.message : null;
+        } catch {}
 
-        const updateAvailable = remoteHash && remoteHash !== localHash;
+        // Remote version from raw package.json (works for all install types)
+        let remoteVersion = null;
+        try { remoteVersion = JSON.parse(await httpsGetText(UPDATE_RAW_PKG_URL)).version || null; } catch {}
+
+        // Determine update availability
+        let updateAvailable = false;
+        if (gitRepo && localHash && remoteHash) {
+            updateAvailable = remoteHash !== localHash;
+        }
+        if (!updateAvailable && remoteVersion) {
+            updateAvailable = compareVersions(remoteVersion, SERVER_VERSION) > 0;
+        }
 
         res.json({
             updateAvailable,
-            localHash: localShort,
-            remoteHash: remoteShort,
+            localHash: localHash ? localHash.substring(0, 7) : null,
+            remoteHash: remoteHash ? remoteHash.substring(0, 7) : null,
             remoteDate,
             remoteMessage: remoteMessage ? remoteMessage.split('\n')[0] : null,
+            localVersion: SERVER_VERSION,
+            remoteVersion,
+            isGitRepo: gitRepo,
             repo: UPDATE_REPO,
             branch: UPDATE_BRANCH,
             version: SERVER_VERSION
@@ -1359,11 +1402,28 @@ app.get('/api/update/check', async (req, res) => {
 app.post('/api/update/perform', async (req, res) => {
     try {
         const projectRoot = path.join(__dirname, '..');
+        const gitRepo = isGitRepo(projectRoot);
 
-        // Stash any local changes (e.g. node_modules, logs) then pull
-        try { execSync('git stash', { cwd: projectRoot, encoding: 'utf8' }); } catch {}
-        execSync('git fetch origin', { cwd: projectRoot, encoding: 'utf8', timeout: 30000 });
-        execSync(`git reset --hard origin/${UPDATE_BRANCH}`, { cwd: projectRoot, encoding: 'utf8' });
+        if (gitRepo) {
+            // Git clone: stash, fetch, reset
+            try { execSync('git stash', { cwd: projectRoot, encoding: 'utf8' }); } catch {}
+            execSync('git fetch origin', { cwd: projectRoot, encoding: 'utf8', timeout: 30000 });
+            execSync(`git reset --hard origin/${UPDATE_BRANCH}`, { cwd: projectRoot, encoding: 'utf8' });
+        } else if (hasGit()) {
+            // Non-git install (ZIP/npm): bootstrap a git repo and sync
+            execSync('git init', { cwd: projectRoot, encoding: 'utf8' });
+            try {
+                execSync(`git remote add origin ${UPDATE_GIT_URL}`, { cwd: projectRoot, encoding: 'utf8' });
+            } catch {
+                execSync(`git remote set-url origin ${UPDATE_GIT_URL}`, { cwd: projectRoot, encoding: 'utf8' });
+            }
+            execSync('git fetch origin', { cwd: projectRoot, encoding: 'utf8', timeout: 60000 });
+            execSync(`git reset --hard origin/${UPDATE_BRANCH}`, { cwd: projectRoot, encoding: 'utf8' });
+        } else {
+            return res.status(400).json({
+                error: `Git is not installed. Please install Git, or download the latest release from https://github.com/${UPDATE_REPO}`
+            });
+        }
 
         // Install dependencies
         execSync('npm install', { cwd: projectRoot, encoding: 'utf8', timeout: 120000 });

@@ -270,6 +270,7 @@
       "currentVersion": "Current Version",
       "localCommit": "Local Commit",
       "remoteCommit": "Latest Commit",
+      "latestVersion": "Latest Version",
       "remoteDate": "Latest Commit Date",
       "latestChange": "Latest Change",
       "available": "Update available!",

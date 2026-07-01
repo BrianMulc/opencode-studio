@@ -190,10 +190,13 @@ export async function sendHeartbeat(): Promise<void> {
 
 export interface UpdateCheckResult {
   updateAvailable: boolean;
-  localHash: string;
-  remoteHash: string;
+  localHash: string | null;
+  remoteHash: string | null;
   remoteDate: string | null;
   remoteMessage: string | null;
+  localVersion: string;
+  remoteVersion: string | null;
+  isGitRepo: boolean;
   repo: string;
   branch: string;
   version: string;

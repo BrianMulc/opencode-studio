@@ -635,14 +635,24 @@ const [systemPrompt, setSystemPrompt] = useState("");
                       <span className="text-sm text-muted-foreground">{t('updates.currentVersion')}</span>
                       <span className="text-sm font-mono">v{updateInfo.version}</span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">{t('updates.localCommit')}</span>
-                      <span className="text-sm font-mono">{updateInfo.localHash}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">{t('updates.remoteCommit')}</span>
-                      <span className="text-sm font-mono">{updateInfo.remoteHash}</span>
-                    </div>
+                    {updateInfo.localHash && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">{t('updates.localCommit')}</span>
+                        <span className="text-sm font-mono">{updateInfo.localHash}</span>
+                      </div>
+                    )}
+                    {updateInfo.remoteHash && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">{t('updates.remoteCommit')}</span>
+                        <span className="text-sm font-mono">{updateInfo.remoteHash}</span>
+                      </div>
+                    )}
+                    {updateInfo.remoteVersion && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">{t('updates.latestVersion')}</span>
+                        <span className="text-sm font-mono">v{updateInfo.remoteVersion}</span>
+                      </div>
+                    )}
                     {updateInfo.remoteDate && (
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-muted-foreground">{t('updates.remoteDate')}</span>
