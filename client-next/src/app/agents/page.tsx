@@ -370,8 +370,8 @@ export default function AgentsPage() {
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-none w-screen h-screen rounded-none border-none overflow-hidden p-0">
-          <div className="flex h-full flex-col">
+        <DialogContent className="flex max-w-none w-screen h-screen rounded-none border-none overflow-hidden p-0">
+          <div className="flex h-full w-full flex-col">
             <DialogHeader className="border-b p-6">
               <DialogTitle>{editing ? t('editAgent') : t('newAgent')}</DialogTitle>
               <DialogDescription>{t('dialogDescription')}</DialogDescription>
