@@ -1,7 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { execSync } = require('child_process');
+const { execSync: _execSync } = require('child_process');
+function execSync(cmd, opts) {
+    return _execSync(cmd, { windowsHide: true, ...opts });
+}
 
 const HOME_DIR = os.homedir();
 const CUSTOM_HARNESS_DIR = path.join(HOME_DIR, '.config', 'opencode', 'custom-harness');

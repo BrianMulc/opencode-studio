@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 
 const path = require('path');
-const { exec } = require('child_process');
+const { exec: _exec } = require('child_process');
+function exec(cmd, opts, cb) {
+    if (typeof opts === 'function') { cb = opts; opts = {}; }
+    return _exec(cmd, { windowsHide: true, ...opts }, cb);
+}
 const os = require('os');
 const fs = require('fs');
 const net = require('net');

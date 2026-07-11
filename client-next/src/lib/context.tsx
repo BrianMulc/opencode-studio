@@ -62,6 +62,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const checkedPendingRef = useRef(false);
   const versionCheckedRef = useRef(false);
   const autoSyncCheckedRef = useRef(false);
+  const wasDisconnectedRef = useRef(false);
 
   const refreshData = useCallback(async () => {
     // Prevent multiple simultaneous refreshes
@@ -155,6 +156,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const isHealthy = await checkHealth();
         if (isHealthy) {
           if (!connected) {
+            // Server reconnected after being disconnected.
+            // If this was an update/restart, the Next.js dev server may have
+            // been replaced — reload the page to get fresh JavaScript chunks.
+            if (wasDisconnectedRef.current) {
+              wasDisconnectedRef.current = false;
+              window.location.reload();
+              return;
+            }
             setConnected(true);
             checkServerVersion();
             checkAutoSync();
@@ -166,12 +175,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setConnected(false);
             setError('Backend disconnected. Attempting to reconnect...');
             checkedPendingRef.current = false;
+            wasDisconnectedRef.current = true;
           }
         }
       } catch {
         if (connected) {
           setConnected(false);
           setError('Backend connection lost. Check if the server is still running.');
+          wasDisconnectedRef.current = true;
         }
       }
     };

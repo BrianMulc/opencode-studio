@@ -7,7 +7,16 @@ const os = require('os');
 const crypto = require('crypto');
 let DatabaseSync;
 try { ({ DatabaseSync } = require('node:sqlite')); } catch {}
-const { spawn, exec, execSync } = require('child_process');
+const { spawn, exec: _exec, execSync: _execSync } = require('child_process');
+
+// Wrappers that always hide console windows on Windows to prevent terminal flashing.
+function exec(cmd, opts, cb) {
+    if (typeof opts === 'function') { cb = opts; opts = {}; }
+    return _exec(cmd, { windowsHide: true, ...opts }, cb);
+}
+function execSync(cmd, opts) {
+    return _execSync(cmd, { windowsHide: true, ...opts });
+}
 const yaml = require('js-yaml');
 const configProviders = require('./lib/config-providers');
 const { aggregateAgents, parseAgentMarkdown, buildAgentMarkdown } = require('./lib/agent-aggregation');
@@ -1447,11 +1456,33 @@ app.post('/api/update/perform', async (req, res) => {
         execSync('npm install', { cwd: path.join(projectRoot, 'server'), encoding: 'utf8', timeout: 120000 });
         execSync('npm install', { cwd: path.join(projectRoot, 'client-next'), encoding: 'utf8', timeout: 120000 });
 
-        res.json({ success: true, message: 'Update complete. Restart required.' });
+        res.json({ success: true, message: 'Update complete. Restarting...' });
 
-        // Shut down so the user can restart
+        // Clear Next.js cache so stale chunks don't cause issues after update
+        try {
+            const nextCacheDir = path.join(projectRoot, 'client-next', '.next');
+            if (fs.existsSync(nextCacheDir)) {
+                fs.rmSync(nextCacheDir, { recursive: true, force: true });
+            }
+        } catch {}
+
+        // Auto-restart: spawn a new server process (which will spawn a fresh client)
+        // then exit this one. Same mechanism as /api/restart but without OCS_SKIP_CLIENT_SPAWN
+        // so the new server starts a fresh Next.js dev server with the updated code.
         setTimeout(() => {
             try { if (clientProcess) clientProcess.kill('SIGTERM'); } catch {}
+            releaseServerLock();
+            try { fs.unlinkSync(SERVER_LOCK_PATH); } catch {}
+            try {
+                spawn('node', ['index.js'], {
+                    cwd: __dirname,
+                    detached: true,
+                    stdio: 'ignore',
+                    windowsHide: true,
+                }).unref();
+            } catch (err) {
+                console.error('[Update] Failed to spawn new server:', err.message);
+            }
             setTimeout(() => process.exit(0), 500);
         }, 1000);
     } catch (err) {

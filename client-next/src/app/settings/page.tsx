@@ -289,7 +289,7 @@ const [systemPrompt, setSystemPrompt] = useState("");
     try {
       const result = await performUpdate();
       toast.success(result.message || t('updates.success'));
-      // Server will shut down after update; user needs to restart
+      // Server auto-restarts after update; client will reconnect via health polling
     } catch (err: any) {
       toast.error(err.response?.data?.error || err.message);
     } finally {
