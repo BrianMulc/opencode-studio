@@ -290,8 +290,11 @@ const [systemPrompt, setSystemPrompt] = useState("");
       const result = await performUpdate();
       toast.success(result.message || t('updates.success'));
       // Server auto-restarts after update; client will reconnect via health polling
+      // and auto-reload to get fresh JS chunks (handled by AppProvider)
     } catch (err: any) {
-      toast.error(err.response?.data?.error || err.message);
+      const errorData = err.response?.data;
+      const errorMsg = errorData?.error ? `${errorData.error}: ${errorData.details || ''}` : err.message;
+      toast.error(errorMsg);
     } finally {
       setUpdating(false);
     }

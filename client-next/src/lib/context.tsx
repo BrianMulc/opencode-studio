@@ -161,7 +161,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             // been replaced — reload the page to get fresh JavaScript chunks.
             if (wasDisconnectedRef.current) {
               wasDisconnectedRef.current = false;
-              window.location.reload();
+              // Small delay to let the new server finish booting
+              // (it may have just started and the Next.js client needs a moment)
+              setTimeout(() => window.location.reload(), 500);
               return;
             }
             setConnected(true);

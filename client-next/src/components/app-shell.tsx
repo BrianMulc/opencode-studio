@@ -3,7 +3,7 @@
 import { useApp } from "@/lib/context";
 import { Sidebar } from "@/components/sidebar";
 import { DebugMenu } from "@/components/debug-menu";
-import { PROTOCOL_URL, restartBackend } from "@/lib/api";
+import { PROTOCOL_URL, restartBackend, MIN_SERVER_VERSION } from "@/lib/api";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -118,7 +118,7 @@ return (
               <div className="space-y-1">
                 <p className="text-xs font-medium">{t('landing.step2Title')}</p>
                 <code className="text-[11px] block bg-background border border-border p-2 rounded font-mono break-all">
-npm install -g opencode-studio-server@2.4.1
+npm install -g opencode-studio-server@${MIN_SERVER_VERSION}
                 </code>
               </div>
 
@@ -157,7 +157,7 @@ npm install -g opencode-studio-server@2.4.1
       <div className={`absolute bottom-4 text-xs text-muted-foreground ${isFirstLoad ? "landing-delay-6" : "landing-delay-fast-6"}`}>
         {showUpdateHint ? (
           <span className="animate-fade-in">
-            {t('landing.notConnectingPrefix')} <code className="bg-muted px-1.5 py-0.5 rounded">npm install -g opencode-studio-server@2.4.1</code>
+            {t('landing.notConnectingPrefix')} <code className="bg-muted px-1.5 py-0.5 rounded">npm install -g opencode-studio-server@{MIN_SERVER_VERSION}</code>
           </span>
         ) : (
           t('landing.waiting')

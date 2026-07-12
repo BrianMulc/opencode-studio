@@ -1288,8 +1288,7 @@ app.post('/api/restart', (req, res) => {
     try { fs.unlinkSync(SERVER_LOCK_PATH); } catch {}
     setTimeout(() => {
         try {
-            const { spawn } = require('child_process');
-            spawn('node', ['index.js'], {
+            spawn(process.execPath, ['index.js'], {
                 cwd: __dirname,
                 detached: true,
                 stdio: 'ignore',
@@ -1341,22 +1340,26 @@ const UPDATE_RAW_PKG_URL = `https://raw.githubusercontent.com/${UPDATE_REPO}/${U
 function httpsGetJson(url, headers = {}) {
     const https = require('https');
     return new Promise((resolve, reject) => {
-        https.get(url, { headers: { 'User-Agent': 'opencode-studio', ...headers } }, (resp) => {
+        const req = https.get(url, { headers: { 'User-Agent': 'opencode-studio', ...headers }, timeout: 10000 }, (resp) => {
             let data = '';
             resp.on('data', (chunk) => data += chunk);
             resp.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(e); } });
-        }).on('error', reject);
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('Request timed out')); });
     });
 }
 
 function httpsGetText(url, headers = {}) {
     const https = require('https');
     return new Promise((resolve, reject) => {
-        https.get(url, { headers: { 'User-Agent': 'opencode-studio', ...headers } }, (resp) => {
+        const req = https.get(url, { headers: { 'User-Agent': 'opencode-studio', ...headers }, timeout: 10000 }, (resp) => {
             let data = '';
             resp.on('data', (chunk) => data += chunk);
             resp.on('end', () => resolve(data));
-        }).on('error', reject);
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('Request timed out')); });
     });
 }
 
@@ -1375,86 +1378,90 @@ function hasGit() {
 }
 
 app.get('/api/update/check', async (req, res) => {
-    try {
-        const projectRoot = path.join(__dirname, '..');
-        const gitRepo = isGitRepo(projectRoot);
+    const projectRoot = path.join(__dirname, '..');
+    const gitRepo = isGitRepo(projectRoot);
 
-        // Local commit hash (only for git clones)
-        let localHash = null;
-        if (gitRepo) {
-            try { localHash = execSync('git rev-parse HEAD', { cwd: projectRoot, encoding: 'utf8' }).trim(); } catch {}
-        }
-
-        // Remote commit info via GitHub API
-        let remoteHash = null, remoteDate = null, remoteMessage = null;
-        try {
-            const remoteInfo = await httpsGetJson(`https://api.github.com/repos/${UPDATE_REPO}/commits/${UPDATE_BRANCH}`);
-            remoteHash = remoteInfo.sha ? remoteInfo.sha.trim() : null;
-            remoteDate = remoteInfo.commit ? remoteInfo.commit.committer.date : null;
-            remoteMessage = remoteInfo.commit ? remoteInfo.commit.message : null;
-        } catch {}
-
-        // Remote version from raw package.json (works for all install types)
-        let remoteVersion = null;
-        try { remoteVersion = JSON.parse(await httpsGetText(UPDATE_RAW_PKG_URL)).version || null; } catch {}
-
-        // Determine update availability
-        let updateAvailable = false;
-        if (gitRepo && localHash && remoteHash) {
-            updateAvailable = remoteHash !== localHash;
-        }
-        if (!updateAvailable && remoteVersion) {
-            updateAvailable = compareVersions(remoteVersion, SERVER_VERSION) > 0;
-        }
-
-        res.json({
-            updateAvailable,
-            localHash: localHash ? localHash.substring(0, 7) : null,
-            remoteHash: remoteHash ? remoteHash.substring(0, 7) : null,
-            remoteDate,
-            remoteMessage: remoteMessage ? remoteMessage.split('\n')[0] : null,
-            localVersion: SERVER_VERSION,
-            remoteVersion,
-            isGitRepo: gitRepo,
-            repo: UPDATE_REPO,
-            branch: UPDATE_BRANCH,
-            version: SERVER_VERSION
-        });
-    } catch (err) {
-        res.status(500).json({ error: 'Failed to check for updates', details: err.message });
+    // Local commit hash (only for git clones)
+    let localHash = null;
+    if (gitRepo) {
+        try { localHash = execSync('git rev-parse HEAD', { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe' }).trim(); } catch {}
     }
+
+    // Remote commit info via GitHub API (may fail due to rate limits or network)
+    let remoteHash = null, remoteDate = null, remoteMessage = null;
+    try {
+        const remoteInfo = await httpsGetJson(`https://api.github.com/repos/${UPDATE_REPO}/commits/${UPDATE_BRANCH}`);
+        remoteHash = remoteInfo.sha ? remoteInfo.sha.trim() : null;
+        remoteDate = remoteInfo.commit ? remoteInfo.commit.committer.date : null;
+        remoteMessage = remoteInfo.commit ? remoteInfo.commit.message : null;
+    } catch {}
+
+    // Remote version from raw package.json (works for all install types)
+    let remoteVersion = null;
+    try { remoteVersion = JSON.parse(await httpsGetText(UPDATE_RAW_PKG_URL)).version || null; } catch {}
+
+    // Determine update availability
+    let updateAvailable = false;
+    if (gitRepo && localHash && remoteHash) {
+        updateAvailable = remoteHash !== localHash;
+    }
+    if (!updateAvailable && remoteVersion) {
+        updateAvailable = compareVersions(remoteVersion, SERVER_VERSION) > 0;
+    }
+
+    res.json({
+        updateAvailable,
+        localHash: localHash ? localHash.substring(0, 7) : null,
+        remoteHash: remoteHash ? remoteHash.substring(0, 7) : null,
+        remoteDate,
+        remoteMessage: remoteMessage ? remoteMessage.split('\n')[0] : null,
+        localVersion: SERVER_VERSION,
+        remoteVersion,
+        isGitRepo: gitRepo,
+        hasGit: hasGit(),
+        repo: UPDATE_REPO,
+        branch: UPDATE_BRANCH,
+        version: SERVER_VERSION
+    });
 });
 
 app.post('/api/update/perform', async (req, res) => {
-    try {
-        const projectRoot = path.join(__dirname, '..');
-        const gitRepo = isGitRepo(projectRoot);
+    const projectRoot = path.join(__dirname, '..');
+    const gitRepo = isGitRepo(projectRoot);
+    const NPM_TIMEOUT = 180000; // 3 min per npm install
+    const GIT_FETCH_TIMEOUT = 60000; // 1 min for git fetch
 
+    try {
         if (gitRepo) {
-            // Git clone: stash, fetch, reset
-            try { execSync('git stash', { cwd: projectRoot, encoding: 'utf8' }); } catch {}
-            execSync('git fetch origin', { cwd: projectRoot, encoding: 'utf8', timeout: 30000 });
-            execSync(`git reset --hard origin/${UPDATE_BRANCH}`, { cwd: projectRoot, encoding: 'utf8' });
+            // Git clone: stash local changes, fetch, reset to remote
+            try { execSync('git stash', { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe' }); } catch {}
+            try { execSync('git clean -fd', { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe' }); } catch {}
+            execSync('git fetch origin', { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe', timeout: GIT_FETCH_TIMEOUT });
+            execSync(`git reset --hard origin/${UPDATE_BRANCH}`, { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe' });
         } else if (hasGit()) {
             // Non-git install (ZIP/npm): bootstrap a git repo and sync
-            execSync('git init', { cwd: projectRoot, encoding: 'utf8' });
+            execSync('git init', { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe' });
             try {
-                execSync(`git remote add origin ${UPDATE_GIT_URL}`, { cwd: projectRoot, encoding: 'utf8' });
+                execSync(`git remote add origin ${UPDATE_GIT_URL}`, { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe' });
             } catch {
-                execSync(`git remote set-url origin ${UPDATE_GIT_URL}`, { cwd: projectRoot, encoding: 'utf8' });
+                execSync(`git remote set-url origin ${UPDATE_GIT_URL}`, { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe' });
             }
-            execSync('git fetch origin', { cwd: projectRoot, encoding: 'utf8', timeout: 60000 });
-            execSync(`git reset --hard origin/${UPDATE_BRANCH}`, { cwd: projectRoot, encoding: 'utf8' });
+            execSync('git fetch origin', { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe', timeout: GIT_FETCH_TIMEOUT });
+            execSync(`git reset --hard origin/${UPDATE_BRANCH}`, { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe' });
         } else {
             return res.status(400).json({
                 error: `Git is not installed. Please install Git, or download the latest release from https://github.com/${UPDATE_REPO}`
             });
         }
 
-        // Install dependencies
-        execSync('npm install', { cwd: projectRoot, encoding: 'utf8', timeout: 120000 });
-        execSync('npm install', { cwd: path.join(projectRoot, 'server'), encoding: 'utf8', timeout: 120000 });
-        execSync('npm install', { cwd: path.join(projectRoot, 'client-next'), encoding: 'utf8', timeout: 120000 });
+        // Install dependencies — use npm ci if package-lock exists for reproducible installs
+        const npmCmd = fs.existsSync(path.join(projectRoot, 'package-lock.json')) ? 'npm ci' : 'npm install';
+        const serverNpmCmd = fs.existsSync(path.join(projectRoot, 'server', 'package-lock.json')) ? 'npm ci' : 'npm install';
+        const clientNpmCmd = fs.existsSync(path.join(projectRoot, 'client-next', 'package-lock.json')) ? 'npm ci' : 'npm install';
+
+        execSync(npmCmd, { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe', timeout: NPM_TIMEOUT });
+        execSync(serverNpmCmd, { cwd: path.join(projectRoot, 'server'), encoding: 'utf8', stdio: 'pipe', timeout: NPM_TIMEOUT });
+        execSync(clientNpmCmd, { cwd: path.join(projectRoot, 'client-next'), encoding: 'utf8', stdio: 'pipe', timeout: NPM_TIMEOUT });
 
         res.json({ success: true, message: 'Update complete. Restarting...' });
 
@@ -1467,14 +1474,14 @@ app.post('/api/update/perform', async (req, res) => {
         } catch {}
 
         // Auto-restart: spawn a new server process (which will spawn a fresh client)
-        // then exit this one. Same mechanism as /api/restart but without OCS_SKIP_CLIENT_SPAWN
-        // so the new server starts a fresh Next.js dev server with the updated code.
+        // then exit this one. Use process.execPath so it works regardless of how
+        // node was installed (nvm, system, portable, etc.)
         setTimeout(() => {
             try { if (clientProcess) clientProcess.kill('SIGTERM'); } catch {}
             releaseServerLock();
             try { fs.unlinkSync(SERVER_LOCK_PATH); } catch {}
             try {
-                spawn('node', ['index.js'], {
+                spawn(process.execPath, ['index.js'], {
                     cwd: __dirname,
                     detached: true,
                     stdio: 'ignore',
@@ -1486,7 +1493,8 @@ app.post('/api/update/perform', async (req, res) => {
             setTimeout(() => process.exit(0), 500);
         }, 1000);
     } catch (err) {
-        res.status(500).json({ error: 'Update failed', details: err.message });
+        const details = err.stderr || err.stdout || err.message;
+        res.status(500).json({ error: 'Update failed', details: details.slice(-500) });
     }
 });
 

@@ -52,7 +52,7 @@ async function discoverBackendPort(): Promise<string> {
 
 const envApiUrl = process.env.NEXT_PUBLIC_API_URL;
 
-const CLIENT_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || '1.17.0';
+const CLIENT_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || '1.18.0';
 
 const DEFAULT_API_URL = 'http://127.0.0.1:1920/api';
 
