@@ -1454,14 +1454,23 @@ app.post('/api/update/perform', async (req, res) => {
             });
         }
 
-        // Install dependencies — use npm ci if package-lock exists for reproducible installs
-        const npmCmd = fs.existsSync(path.join(projectRoot, 'package-lock.json')) ? 'npm ci' : 'npm install';
-        const serverNpmCmd = fs.existsSync(path.join(projectRoot, 'server', 'package-lock.json')) ? 'npm ci' : 'npm install';
-        const clientNpmCmd = fs.existsSync(path.join(projectRoot, 'client-next', 'package-lock.json')) ? 'npm ci' : 'npm install';
+        // Install dependencies — try npm ci (faster, reproducible) first, fall back to npm install
+        function runNpmInstall(cwd) {
+            const hasLock = fs.existsSync(path.join(cwd, 'package-lock.json'));
+            if (hasLock) {
+                try {
+                    execSync('npm ci', { cwd, encoding: 'utf8', stdio: 'pipe', timeout: NPM_TIMEOUT });
+                    return;
+                } catch (ciErr) {
+                    console.log('[Update] npm ci failed in ' + cwd + ', falling back to npm install: ' + ciErr.message);
+                }
+            }
+            execSync('npm install', { cwd, encoding: 'utf8', stdio: 'pipe', timeout: NPM_TIMEOUT });
+        }
 
-        execSync(npmCmd, { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe', timeout: NPM_TIMEOUT });
-        execSync(serverNpmCmd, { cwd: path.join(projectRoot, 'server'), encoding: 'utf8', stdio: 'pipe', timeout: NPM_TIMEOUT });
-        execSync(clientNpmCmd, { cwd: path.join(projectRoot, 'client-next'), encoding: 'utf8', stdio: 'pipe', timeout: NPM_TIMEOUT });
+        runNpmInstall(projectRoot);
+        runNpmInstall(path.join(projectRoot, 'server'));
+        runNpmInstall(path.join(projectRoot, 'client-next'));
 
         res.json({ success: true, message: 'Update complete. Restarting...' });
 

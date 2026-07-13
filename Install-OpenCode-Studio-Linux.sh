@@ -39,6 +39,19 @@ check_node_version() {
     return 0
 }
 
+# --- Helper: download a URL (curl or wget) ---
+download() {
+    if command -v curl &> /dev/null; then
+        curl -fsSL "$1"
+    elif command -v wget &> /dev/null; then
+        wget -qO- "$1"
+    else
+        echo "ERROR: Neither curl nor wget is installed."
+        echo "Please install one of them and try again."
+        return 1
+    fi
+}
+
 # --- Check / install Node.js ---
 check_node_version
 NODE_STATUS=$?
@@ -56,11 +69,14 @@ else
     echo ""
 
     # Detect package manager and install Node.js
-    # Note: some distros ship old Node versions. We try NodeSource for apt.
     if command -v apt-get &> /dev/null; then
         # Debian/Ubuntu/Mint - use NodeSource for Node 22
         echo "Detected: apt (Debian/Ubuntu)"
         echo "Installing Node.js 22 via NodeSource..."
+        # Ensure curl is available for NodeSource setup
+        if ! command -v curl &> /dev/null; then
+            sudo apt-get install -y curl
+        fi
         curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
         sudo apt-get install -y nodejs
     elif command -v dnf &> /dev/null; then
@@ -70,6 +86,9 @@ else
     elif command -v yum &> /dev/null; then
         # Older RHEL/CentOS
         echo "Detected: yum (RHEL/CentOS)"
+        if ! command -v curl &> /dev/null; then
+            sudo yum install -y curl
+        fi
         curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo -E bash -
         sudo yum install -y nodejs
     elif command -v pacman &> /dev/null; then
@@ -87,7 +106,7 @@ else
     else
         echo "ERROR: Could not detect your package manager."
         echo "Please install Node.js 20+ manually from https://nodejs.org/"
-        echo "Then run this installer again."
+        echo "Or use nvm: download https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh and run it"
         exit 1
     fi
 

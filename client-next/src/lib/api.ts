@@ -208,7 +208,8 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
 }
 
 export async function performUpdate(): Promise<{ success: boolean; message: string }> {
-  const { data } = await api.post<{ success: boolean; message: string }>('/update/perform');
+  // Long timeout: npm install can take 3+ minutes on slow connections
+  const { data } = await api.post<{ success: boolean; message: string }>('/update/perform', {}, { timeout: 300000 });
   return data;
 }
 

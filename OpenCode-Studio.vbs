@@ -35,7 +35,9 @@ Function FindNode()
         WshShell.ExpandEnvironmentStrings("%ProgramFiles(x86)%\nodejs\node.exe"), _
         WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\nvm4w\nodejs\node.exe"), _
         WshShell.ExpandEnvironmentStrings("%APPDATA%\nvm\current\node.exe"), _
-        WshShell.ExpandEnvironmentStrings("%USERPROFILE%\scoop\apps\nodejs\current\node.exe") _
+        WshShell.ExpandEnvironmentStrings("%USERPROFILE%\.nvm\current\node.exe"), _
+        WshShell.ExpandEnvironmentStrings("%USERPROFILE%\scoop\apps\nodejs\current\node.exe"), _
+        WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\fnm_multishells\current\node.exe") _
     )
     For Each candidate In candidates
         If fso.FileExists(candidate) Then
