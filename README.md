@@ -24,58 +24,62 @@
 
 ## Installation
 
-### Windows (double-click — no terminals needed)
+### Windows
 
-1. **Download** the repo as a ZIP from GitHub and extract it
-2. **Double-click** `Install-OpenCode-Studio-Windows.vbs`
-   - Installs Node.js 20+ automatically if not present (no admin rights needed)
-   - Installs all dependencies
-   - Creates Desktop and Start Menu shortcuts
-3. **Double-click** the **OpenCode Studio** shortcut on your Desktop
-   - No terminal windows appear
-   - Browser opens automatically at http://localhost:1080
-4. **To stop**: close the browser tab — everything shuts down automatically
+1. **Download** — Go to the [latest release page](https://github.com/BrianMulc/opencode-studio/releases/latest) and click the `.zip` file under "Assets" to download it
+2. **Unzip** — Find the downloaded ZIP file, right-click it, and select **"Extract All..."**. Choose a location like your Desktop or Documents folder
+3. **Install** — Open the extracted folder and **double-click** the file named `Install-OpenCode-Studio-Windows.vbs`
+   - If a security warning appears, click **"OK"** or **"Run"** — this is normal for scripts
+   - A window will appear showing download progress. Wait for it to finish (this may take a few minutes)
+   - If Node.js is not installed, it will be downloaded and installed automatically — **no admin password needed**
+4. **Launch** — Find the **OpenCode Studio** shortcut on your Desktop and **double-click** it
+   - Your web browser will open automatically — no terminal windows will appear
+5. **To stop** — Just close the browser tab. Everything shuts down automatically.
 
-### macOS (one-command install — no terminals needed)
+<details>
+<summary><strong>macOS</strong></summary>
 
-If you downloaded the repo as a ZIP, the installer won't have execute
-permission. Open Terminal and run:
+1. **Download** — Go to the [latest release page](https://github.com/BrianMulc/opencode-studio/releases/latest) and click the `.zip` file under "Assets" to download it
+2. **Unzip** — Find the downloaded ZIP file and double-click it to extract
+3. **Install** — Open the extracted folder. Then:
+   - Open **Terminal** (press `Cmd + Space`, type "Terminal", press Enter)
+   - Drag the `Install-OpenCode-Studio-Mac.command` file into the Terminal window and press Enter
+   - If prompted, type your Mac password and press Enter (characters won't show — this is normal)
+   - Wait for the installation to complete
+4. **Launch** — Open **OpenCode Studio** from /Applications, Launchpad, or Spotlight
+   - Your web browser will open automatically — no terminal windows will appear
+5. **To stop** — Just close the browser tab. Everything shuts down automatically.
 
-```bash
-cd /path/to/opencode-studio
-chmod +x Install-OpenCode-Studio-Mac.command
-./Install-OpenCode-Studio-Mac.command
-```
+> **Note**: On first launch, macOS may show "OpenCode Studio cannot be opened because it is from an unidentified developer." To fix this:
+> 1. Right-click (or Control-click) **OpenCode Studio** in /Applications
+> 2. Select **"Open"** from the menu
+> 3. Click **"Open"** in the dialog that appears
+> 4. After this, it will open normally in the future
 
-- Installs Node.js 20+ automatically (Homebrew or .pkg from nodejs.org)
-- Installs all dependencies
-- Creates OpenCode Studio.app in /Applications
+</details>
 
-Then open **OpenCode Studio** from /Applications, Launchpad, or Spotlight.
-- No terminal windows appear
-- Browser opens automatically at http://localhost:1080
-- To stop: just close the browser tab — everything shuts down automatically
+<details>
+<summary><strong>Linux</strong></summary>
 
-> **Note**: On first launch, macOS Gatekeeper may block the app because it is
-> from an unidentified developer. Right-click the app → select "Open" →
-> click "Open" in the dialog. After this it will open normally.
+1. **Download** — Go to the [latest release page](https://github.com/BrianMulc/opencode-studio/releases/latest) and click the `.zip` file under "Assets" to download it
+2. **Unzip** — Extract the ZIP file to a location of your choice
+3. **Install** — Open a terminal in the extracted folder and run:
+   ```bash
+   chmod +x Install-OpenCode-Studio-Linux.sh && ./Install-OpenCode-Studio-Linux.sh
+   ```
+   - Node.js 20+ will be installed automatically via your package manager
+4. **Launch** — Open **OpenCode Studio** from your application menu or desktop shortcut
+   - Your web browser will open automatically — no terminal windows will appear
+5. **To stop** — Just close the browser tab. Everything shuts down automatically.
 
-### Linux (one-command install)
+</details>
 
-```bash
-chmod +x Install-OpenCode-Studio-Linux.sh && ./Install-OpenCode-Studio-Linux.sh
-```
+---
 
-- Installs Node.js 20+ automatically via your package manager (apt/dnf/yum/pacman/zypper/apk)
-- Installs all dependencies
-- Creates desktop shortcut and application menu entry
+### For developers / advanced users
 
-Then open **OpenCode Studio** from your application menu or desktop shortcut.
-- No terminal windows appear
-- Browser opens automatically at http://localhost:1080
-- To stop: just close the browser tab — everything shuts down automatically
-
-### Alternative: public site + local backend
+<details>
+<summary><strong>npm (public site + local backend)</strong></summary>
 
 ```bash
 npm install -g opencode-studio-server
@@ -83,11 +87,28 @@ npm install -g opencode-studio-server
 
 Visit [opencode.micr.dev](https://opencode.micr.dev) and click "Launch Backend" in the sidebar.
 
-### Alternative: Windows quickstart (manual)
+</details>
+
+<details>
+<summary><strong>Windows quickstart (manual)</strong></summary>
 
 ```batch
 quickstart.bat
 ```
+
+</details>
+
+<details>
+<summary><strong>Clone with git</strong></summary>
+
+```bash
+git clone https://github.com/BrianMulc/opencode-studio.git
+cd opencode-studio
+```
+
+Then use the platform installer scripts as described above.
+
+</details>
 
 ---
 
