@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { useApp } from "@/lib/context";
-import api, { getPaths, setConfigPath, getBackup, restoreBackup, getGitHubBackupStatus, backupToGitHub, restoreFromGitHub, setGitHubAutoSync, checkForUpdate, performUpdate, type PathsInfo, type BackupData, type UpdateCheckResult } from "@/lib/api";
+import api, { getPaths, setConfigPath, getBackup, restoreBackup, getGitHubBackupStatus, backupToGitHub, restoreFromGitHub, setGitHubAutoSync, checkForUpdate, performUpdate, getModelPolicy, saveModelPolicy, validateModelPolicy, type PathsInfo, type BackupData, type UpdateCheckResult, type ModelPolicy as ModelPolicyType, type DelegationViolation, type AgentClassification } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -26,7 +26,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PermissionEditor } from "@/components/permission-editor";
 import { CustomProviderModelEditor } from "@/components/custom-provider-model-editor";
-import { Sliders as Settings, Android, Download, Upload, Save, ChevronDown, Loader, Code, Github, Reload } from "@nsmr/pixelart-react";
+import { Sliders as Settings, Android, Download, Upload, Save, ChevronDown, Loader, Code, Github, Reload, Alert } from "@nsmr/pixelart-react";
 import { PageHelp } from "@/components/page-help";
 import { toast } from "sonner";
 import Editor from "@monaco-editor/react";
@@ -65,6 +65,7 @@ export default function SettingsPage() {
     prompts: false,
     backup: false,
     updates: false,
+    modelPolicy: false,
   });
   
 const [systemPrompt, setSystemPrompt] = useState("");
@@ -83,6 +84,10 @@ const [systemPrompt, setSystemPrompt] = useState("");
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updating, setUpdating] = useState(false);
 
+  const [modelPolicy, setModelPolicy] = useState<ModelPolicyType | null>(null);
+  const [policyValidation, setPolicyValidation] = useState<{ agents: AgentClassification[]; violations: DelegationViolation[]; localProviders: string[]; cloudProviders: string[] } | null>(null);
+  const [savingPolicy, setSavingPolicy] = useState(false);
+
 
   const toggleSection = (section: string) => {
     setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
@@ -92,6 +97,9 @@ const [systemPrompt, setSystemPrompt] = useState("");
     getPaths().then(setPathsInfo).catch(console.error);
     loadSystemPrompt();
     handleCheckUpdate(true); // silent - no toast, just populates the UI
+
+    getModelPolicy().then(setModelPolicy).catch(console.error);
+    validateModelPolicy().then(v => setPolicyValidation({ agents: v.agents, violations: v.violations, localProviders: v.localProviders, cloudProviders: v.cloudProviders })).catch(console.error);
 
     getGitHubBackupStatus().then(status => {
       setGhBackupStatus(status);
@@ -297,6 +305,28 @@ const [systemPrompt, setSystemPrompt] = useState("");
       toast.error(errorMsg);
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const handleToggleModelPolicy = async (enabled: boolean) => {
+    setSavingPolicy(true);
+    try {
+      const result = await saveModelPolicy({ enabled });
+      setModelPolicy(result.policy);
+      if (result.violations.length > 0) {
+        toast.warning(`Policy enabled. ${result.violations.length} delegation violation(s) detected.`);
+      } else if (enabled) {
+        toast.success("Delegation guard enabled. A runtime plugin has been installed.");
+      } else {
+        toast.success("Delegation guard disabled.");
+      }
+      // Refresh validation
+      const v = await validateModelPolicy();
+      setPolicyValidation({ agents: v.agents, violations: v.violations, localProviders: v.localProviders, cloudProviders: v.cloudProviders });
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || err.message);
+    } finally {
+      setSavingPolicy(false);
     }
   };
 
@@ -734,6 +764,160 @@ const [systemPrompt, setSystemPrompt] = useState("");
                   </Button>
                 </div>
               )}
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
+
+      <Collapsible open={openSections.modelPolicy} onOpenChange={() => toggleSection("modelPolicy")}>
+        <Card className="hover-lift">
+          <CollapsibleTrigger asChild>
+            <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Alert className="h-5 w-5" />
+                  <CardTitle>Delegation Guard</CardTitle>
+                </div>
+                <div className="flex items-center gap-2">
+                  {modelPolicy?.enabled && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary font-medium">
+                      Active
+                    </span>
+                  )}
+                  {policyValidation && policyValidation.violations.length > 0 && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-destructive/20 text-destructive font-medium">
+                      {policyValidation.violations.length} violation(s)
+                    </span>
+                  )}
+                  <ChevronDown className={`h-5 w-5 transition-transform duration-200 ${openSections.modelPolicy ? "rotate-180" : ""}`} />
+                </div>
+              </div>
+              <CardDescription>
+                Prevents local models from delegating to cloud models — blocks sensitive data from being sent to external APIs.
+              </CardDescription>
+            </CardHeader>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="animate-scale-in">
+            <CardContent className="space-y-4 pt-0">
+              {/* Enable/disable */}
+              <div className="flex items-center justify-between p-4 bg-background rounded-lg">
+                <div className="space-y-0.5">
+                  <Label className="text-sm font-medium">Enable delegation guard</Label>
+                  <p className="text-xs text-muted-foreground">
+                    When enabled, a runtime plugin is installed that blocks local-model agents from delegating to cloud-model subagents.
+                    Cloud models can still delegate to both local and cloud models.
+                  </p>
+                </div>
+                <Switch
+                  checked={modelPolicy?.enabled || false}
+                  onCheckedChange={handleToggleModelPolicy}
+                  disabled={savingPolicy}
+                />
+              </div>
+
+              {/* How it works */}
+              <div className="p-4 bg-muted/30 rounded-lg space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Delegation Rules</p>
+                <div className="space-y-1.5 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
+                    <span><strong>Cloud → Local</strong>: Allowed</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
+                    <span><strong>Cloud → Cloud</strong>: Allowed</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
+                    <span><strong>Local → Local</strong>: Allowed</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block w-2 h-2 rounded-full bg-red-500" />
+                    <span><strong>Local → Cloud</strong>: Blocked (data exfiltration risk)</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Agent classifications */}
+              {policyValidation && policyValidation.agents.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Agent Model Classifications</p>
+                  <div className="space-y-1">
+                    {policyValidation.agents.filter(a => !a.disabled).map((agent) => (
+                      <div key={agent.name} className="flex items-center justify-between p-2 bg-background rounded border border-border/50">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">{agent.name}</span>
+                          <span className="text-xs text-muted-foreground">{agent.mode}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground font-mono">{agent.model}</span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            agent.classification === 'local'
+                              ? 'bg-blue-500/20 text-blue-500'
+                              : 'bg-orange-500/20 text-orange-500'
+                          }`}>
+                            {agent.classification}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Violations */}
+              {policyValidation && policyValidation.violations.length > 0 && (
+                <div className="p-4 bg-destructive/10 rounded-lg space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Alert className="h-4 w-4 text-destructive" />
+                    <p className="text-sm font-medium text-destructive">
+                      {policyValidation.violations.length} delegation violation(s) detected
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    {policyValidation.violations.map((v, i) => (
+                      <div key={i} className="text-xs bg-background p-3 rounded border border-destructive/30">
+                        <code className="font-mono">{v.primaryAgent}</code>
+                        <span className="text-muted-foreground"> (local: {v.primaryModel})</span>
+                        <span className="text-destructive"> → delegates to → </span>
+                        <code className="font-mono">{v.subagent}</code>
+                        <span className="text-muted-foreground"> (cloud: {v.subagentModel})</span>
+                        <p className="text-muted-foreground mt-1">
+                          To fix: change the subagent&apos;s model to a local provider, or deny task delegation to this subagent.
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Provider lists */}
+              {policyValidation && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-3 bg-background rounded-lg border border-border/50">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-blue-500 mb-2">Local Providers</p>
+                    <div className="flex flex-wrap gap-1">
+                      {policyValidation.localProviders.map(p => (
+                        <span key={p} className="text-xs px-2 py-0.5 bg-blue-500/10 text-blue-500 rounded">{p}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="p-3 bg-background rounded-lg border border-border/50">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-orange-500 mb-2">Cloud Providers</p>
+                    <div className="flex flex-wrap gap-1">
+                      {policyValidation.cloudProviders.map(p => (
+                        <span key={p} className="text-xs px-2 py-0.5 bg-orange-500/10 text-orange-500 rounded">{p}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <p className="text-xs text-muted-foreground">
+                The guardrail plugin is auto-installed to your opencode plugin directory and enforces the rule at runtime.
+                It hooks into the <code className="bg-muted px-1 rounded">task</code> tool and aborts any delegation
+                from a local model to a cloud model. Restart OpenCode after enabling to activate the plugin.
+              </p>
             </CardContent>
           </CollapsibleContent>
         </Card>

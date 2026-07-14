@@ -30,6 +30,7 @@ const {
 
 const pkg = require('./package.json');
 const profileManager = require('./profile-manager');
+const modelPolicy = require('./lib/model-policy');
 const SERVER_VERSION = pkg.version;
 const MIN_CLIENT_VERSION = '1.16.0';
 
@@ -526,6 +527,11 @@ function loadStudioConfig() {
         availableGooglePlugins: [],
         presets: [],
         githubRepo: null,
+        modelPolicy: {
+            enabled: false,
+            customLocalProviders: [],
+            customCloudProviders: [],
+        },
         cooldownRules: [
             { name: "Antigravity Claude Opus 4 (4h)", duration: 4 * 60 * 60 * 1000 },
             { name: "Gemini 3 Pro (24h)", duration: 24 * 60 * 60 * 1000 }
@@ -3873,6 +3879,98 @@ app.post('/api/plugins/:name/toggle', (req, res) => {
     saveStudioConfig(studio);
     triggerGitHubAutoSync();
     res.json({ success: true, enabled: !studio.disabledPlugins.includes(name) });
+});
+
+// ============================================
+// MODEL POLICY (Delegation Guard)
+// ============================================
+// Prevents local models from delegating to cloud models (data exfiltration prevention).
+// The policy is stored in studio.json, and a guardrail plugin is auto-installed to
+// enforce the rule at runtime in the OpenCode CLI.
+
+const GUARDRAIL_PLUGIN_NAME = 'delegation-guard.js';
+
+app.get('/api/model-policy', (req, res) => {
+    const studio = loadStudioConfig();
+    const policy = studio.modelPolicy || {
+        enabled: false,
+        customLocalProviders: [],
+        customCloudProviders: [],
+    };
+    res.json(policy);
+});
+
+app.post('/api/model-policy', (req, res) => {
+    try {
+        const { enabled, customLocalProviders, customCloudProviders } = req.body || {};
+        const studio = loadStudioConfig();
+
+        studio.modelPolicy = {
+            enabled: enabled !== undefined ? !!enabled : (studio.modelPolicy?.enabled || false),
+            customLocalProviders: Array.isArray(customLocalProviders) ? customLocalProviders : (studio.modelPolicy?.customLocalProviders || []),
+            customCloudProviders: Array.isArray(customCloudProviders) ? customCloudProviders : (studio.modelPolicy?.customCloudProviders || []),
+        };
+
+        saveStudioConfig(studio);
+
+        // Install or remove the guardrail plugin
+        const pluginDir = getActivePluginDir();
+        if (pluginDir) {
+            if (studio.modelPolicy.enabled) {
+                if (!fs.existsSync(pluginDir)) fs.mkdirSync(pluginDir, { recursive: true });
+                const pluginPath = path.join(pluginDir, GUARDRAIL_PLUGIN_NAME);
+                const pluginCode = modelPolicy.generateGuardrailPlugin(studio.modelPolicy);
+                atomicWriteFileSync(pluginPath, pluginCode);
+            } else {
+                const pluginPath = path.join(pluginDir, GUARDRAIL_PLUGIN_NAME);
+                if (fs.existsSync(pluginPath)) {
+                    try { fs.unlinkSync(pluginPath); } catch {}
+                }
+            }
+        }
+
+        // Run validation to return any current violations
+        const config = loadConfig() || {};
+        const providersConfig = (config.model && config.model.providers) || config.providers || {};
+        const agents = aggregateAgents({ roots: getSearchRoots(), agentDirs: getAgentDirs(), activeConfigDir: getConfigPath() ? path.dirname(getConfigPath()) : null });
+        const violations = modelPolicy.validateDelegationPolicy(agents, studio.modelPolicy, providersConfig);
+
+        res.json({ success: true, policy: studio.modelPolicy, violations });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/model-policy/validate', (req, res) => {
+    try {
+        const studio = loadStudioConfig();
+        const policy = studio.modelPolicy || { enabled: false, customLocalProviders: [], customCloudProviders: [] };
+
+        const config = loadConfig() || {};
+        const providersConfig = (config.model && config.model.providers) || config.providers || {};
+        const agents = aggregateAgents({ roots: getSearchRoots(), agentDirs: getAgentDirs(), activeConfigDir: getConfigPath() ? path.dirname(getConfigPath()) : null });
+
+        // Classify all agents
+        const agentClassifications = agents.map(a => ({
+            name: a.name,
+            mode: a.mode,
+            model: a.model || '(default)',
+            classification: modelPolicy.classifyModel(a.model, policy, providersConfig),
+            disabled: a.disabled,
+        }));
+
+        const violations = modelPolicy.validateDelegationPolicy(agents, policy, providersConfig);
+
+        res.json({
+            policy,
+            agents: agentClassifications,
+            violations,
+            localProviders: [...modelPolicy.DEFAULT_LOCAL_PROVIDERS, ...(policy.customLocalProviders || [])],
+            cloudProviders: [...modelPolicy.DEFAULT_CLOUD_PROVIDERS, ...(policy.customCloudProviders || [])],
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.get('/api/models', (req, res) => {

@@ -908,4 +908,54 @@ export async function setGitHubAutoSync(enabled: boolean): Promise<{ success: bo
   return data;
 }
 
+// ============================================
+// Model Policy (Delegation Guard)
+// ============================================
+
+export interface ModelPolicy {
+  enabled: boolean;
+  customLocalProviders: string[];
+  customCloudProviders: string[];
+}
+
+export interface DelegationViolation {
+  primaryAgent: string;
+  primaryModel: string;
+  primaryClass: string;
+  subagent: string;
+  subagentModel: string;
+  subagentClass: string;
+}
+
+export interface AgentClassification {
+  name: string;
+  mode: string;
+  model: string;
+  classification: string;
+  disabled: boolean;
+}
+
+export interface ModelPolicyValidation {
+  policy: ModelPolicy;
+  agents: AgentClassification[];
+  violations: DelegationViolation[];
+  localProviders: string[];
+  cloudProviders: string[];
+}
+
+export async function getModelPolicy(): Promise<ModelPolicy> {
+  const { data } = await api.get<ModelPolicy>('/model-policy');
+  return data;
+}
+
+export async function saveModelPolicy(policy: Partial<ModelPolicy>): Promise<{ success: boolean; policy: ModelPolicy; violations: DelegationViolation[] }> {
+  const { data } = await api.post<{ success: boolean; policy: ModelPolicy; violations: DelegationViolation[] }>('/model-policy', policy);
+  return data;
+}
+
+export async function validateModelPolicy(): Promise<ModelPolicyValidation> {
+  const { data } = await api.get<ModelPolicyValidation>('/model-policy/validate');
+  return data;
+}
+
 export default api;
