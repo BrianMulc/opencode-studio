@@ -20,43 +20,25 @@
 </a>
 </p>
 
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/487bba2b-a9ea-455b-a2ac-ccc5c3b95af7" alt="preview" width="1000">
-</p>
-
 ---
 
-### quickstart
+## Installation
 
-#### option 1: public site + local backend (recommended)
+### Windows (double-click — no terminals needed)
 
-```bash
-npm install -g opencode-studio-server
-```
-
-visit [opencode.micr.dev](https://opencode.micr.dev) and click "Launch Backend" in the sidebar.
-
-#### option 2: fully local
-
-**windows (double-click install - no terminals)**
-
-1. Double-click `Install-OpenCode-Studio-Windows.vbs`
-   - Installs Node.js automatically if not present
+1. **Download** the repo as a ZIP from GitHub and extract it
+2. **Double-click** `Install-OpenCode-Studio-Windows.vbs`
+   - Installs Node.js 20+ automatically if not present (no admin rights needed)
    - Installs all dependencies
    - Creates Desktop and Start Menu shortcuts
-2. Double-click the **OpenCode Studio** shortcut on your Desktop
+3. **Double-click** the **OpenCode Studio** shortcut on your Desktop
    - No terminal windows appear
    - Browser opens automatically at http://localhost:1080
-3. To stop: just close the browser tab - everything shuts down automatically
+4. **To stop**: close the browser tab — everything shuts down automatically
 
-**windows (manual)**
-```batch
-quickstart.bat
-```
+### macOS (one-command install — no terminals needed)
 
-**macos (one-command install - no terminals)**
-
-If you downloaded the repo as a zip, the installer won't have execute
+If you downloaded the repo as a ZIP, the installer won't have execute
 permission. Open Terminal and run:
 
 ```bash
@@ -72,25 +54,46 @@ chmod +x Install-OpenCode-Studio-Mac.command
 Then open **OpenCode Studio** from /Applications, Launchpad, or Spotlight.
 - No terminal windows appear
 - Browser opens automatically at http://localhost:1080
-- To stop: just close the browser tab - everything shuts down automatically
+- To stop: just close the browser tab — everything shuts down automatically
 
-> Note: On first launch, macOS Gatekeeper may block the app because it is
+> **Note**: On first launch, macOS Gatekeeper may block the app because it is
 > from an unidentified developer. Right-click the app → select "Open" →
 > click "Open" in the dialog. After this it will open normally.
 
-**linux (one-command install - no terminals)**
+### Linux (one-command install)
 
 ```bash
 chmod +x Install-OpenCode-Studio-Linux.sh && ./Install-OpenCode-Studio-Linux.sh
 ```
-- Installs Node.js automatically via your package manager (apt/dnf/yum/pacman/zypper/apk)
+
+- Installs Node.js 20+ automatically via your package manager (apt/dnf/yum/pacman/zypper/apk)
 - Installs all dependencies
 - Creates desktop shortcut and application menu entry
 
 Then open **OpenCode Studio** from your application menu or desktop shortcut.
 - No terminal windows appear
 - Browser opens automatically at http://localhost:1080
-- To stop: just close the browser tab - everything shuts down automatically
+- To stop: just close the browser tab — everything shuts down automatically
+
+### Alternative: public site + local backend
+
+```bash
+npm install -g opencode-studio-server
+```
+
+Visit [opencode.micr.dev](https://opencode.micr.dev) and click "Launch Backend" in the sidebar.
+
+### Alternative: Windows quickstart (manual)
+
+```batch
+quickstart.bat
+```
+
+---
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/487bba2b-a9ea-455b-a2ac-ccc5c3b95af7" alt="preview" width="1000">
+</p>
 
 ---
 
