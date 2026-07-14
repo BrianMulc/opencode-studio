@@ -253,7 +253,7 @@ export const DelegationGuardPlugin = async ({ project, client, $, directory, wor
 
       // Zero data crossover: local can only delegate to local, cloud can only delegate to cloud
       if (currentClass !== targetClass) {
-        const reason = `BLOCKED: Agent '${currentAgentName}' is using a ${currentClass} model (${currentModel || 'default'}) and cannot delegate to agent '${targetAgent}' which uses a ${targetClass} model (${targetModel || 'default'}). This prevents data crossover between local and cloud models. To change this, update the model policy in OpenCode Studio settings.`;
+        const reason = 'BLOCKED: Agent ' + currentAgentName + ' is using a ' + currentClass + ' model (' + (currentModel || 'default') + ') and cannot delegate to agent ' + targetAgent + ' which uses a ' + targetClass + ' model (' + (targetModel || 'default') + '). This prevents data crossover between local and cloud models. To change this, update the model policy in OpenCode Studio settings.';
         console.error('[DelegationGuard]', reason);
         return { abort: true, reason };
       }
@@ -261,6 +261,7 @@ export const DelegationGuardPlugin = async ({ project, client, $, directory, wor
   };
 };
 `;
+
 }
 
 module.exports = {
