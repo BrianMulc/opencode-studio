@@ -20,9 +20,10 @@ findAvailablePort(DEFAULT_PORT).then(port => {
     process.env.PORT = port.toString();
     console.log(`Starting Next.js on port ${port}`);
 
-    // Use the local next binary directly (avoids npx spawning a sub-shell/window)
+    // Use process.execPath (the currently running node) instead of 'node' from PATH,
+    // so it works even when node isn't on the system PATH (portable/nvm installs).
     const nextBin = path.join(__dirname, 'node_modules', 'next', 'dist', 'bin', 'next');
-    const dev = spawn('node', [nextBin, 'dev'], {
+    const dev = spawn(process.execPath, [nextBin, 'dev'], {
         stdio: 'inherit',
         windowsHide: true
     });

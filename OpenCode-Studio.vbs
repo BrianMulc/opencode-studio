@@ -31,6 +31,8 @@ Function FindNode()
     On Error Resume Next
     ' Try common locations
     candidates = Array( _
+        WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\opencode-studio\nodejs\node.exe"), _
+        WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\nodejs\node.exe"), _
         WshShell.ExpandEnvironmentStrings("%ProgramFiles%\nodejs\node.exe"), _
         WshShell.ExpandEnvironmentStrings("%ProgramFiles(x86)%\nodejs\node.exe"), _
         WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\nvm4w\nodejs\node.exe"), _
@@ -85,8 +87,8 @@ If Not fso.FolderExists(scriptDir & "\server\node_modules") Then needsInstall = 
 If Not fso.FolderExists(scriptDir & "\client-next\node_modules") Then needsInstall = True
 
 If needsInstall Then
-    ' npm needs cmd, but this is a one-time install
-    WshShell.Run "cmd /c cd /d """ & scriptDir & """ && npm install", 0, True
+    ' npm needs cmd - show the window so user can see progress/errors
+    WshShell.Run "cmd /c cd /d """ & scriptDir & """ && echo Installing dependencies... && npm install && pause", 1, True
 End If
 
 ' --- Clean up stale server lock ---

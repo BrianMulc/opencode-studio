@@ -86,14 +86,7 @@ else
     elif [[ $REPLY == "2" ]]; then
         # Download and install .pkg from nodejs.org
         echo "    Downloading Node.js LTS .pkg installer..."
-        ARCH=$(uname -m)
-        if [ "$ARCH" = "arm64" ]; then
-            NODE_URL="https://nodejs.org/dist/v22.16.0/node-v22.16.0.pkg"
-            # Fallback: the universal .pkg
-            NODE_URL="https://nodejs.org/dist/v22.16.0/node-v22.16.0-darwin-arm64.pkg"
-        else
-            NODE_URL="https://nodejs.org/dist/v22.16.0/node-v22.16.0-darwin-x64.pkg"
-        fi
+        NODE_URL="https://nodejs.org/dist/v22.16.0/node-v22.16.0.pkg"
         TMP_PKG="/tmp/nodejs-installer.pkg"
         curl -L -o "$TMP_PKG" "$NODE_URL"
         echo "    Installing Node.js (may prompt for your password)..."

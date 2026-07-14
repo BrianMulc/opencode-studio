@@ -19,8 +19,11 @@ scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
 tempDir = WshShell.ExpandEnvironmentStrings("%TEMP%")
 
 ' --- Helper: check if Node.js is available AND version 20+ ---
+' Tries PATH first, then falls back to FindNodePath() for portable/nvm installs
+' where node exists but isn't on the system PATH.
 Function HasNode()
     On Error Resume Next
+    ' Try 1: node on PATH
     WshShell.Run "cmd /c node -v > """ & tempDir & "\ocs_nodecheck.txt"" 2>&1", 0, True
     If fso.FileExists(tempDir & "\ocs_nodecheck.txt") Then
         Set f = fso.OpenTextFile(tempDir & "\ocs_nodecheck.txt", 1)
@@ -37,6 +40,29 @@ Function HasNode()
             End If
         End If
     End If
+    ' Try 2: find node.exe at known install locations
+    nodePath = FindNodePath()
+    If nodePath <> "" Then
+        WshShell.Run "cmd /c """ & nodePath & """ -v > """ & tempDir & "\ocs_nodecheck.txt"" 2>&1", 0, True
+        If fso.FileExists(tempDir & "\ocs_nodecheck.txt") Then
+            Set f = fso.OpenTextFile(tempDir & "\ocs_nodecheck.txt", 1)
+            nodeCheck = Trim(f.ReadAll)
+            f.Close
+            fso.DeleteFile tempDir & "\ocs_nodecheck.txt", True
+            If InStr(nodeCheck, "v") = 1 Then
+                versionPart = Mid(nodeCheck, 2)
+                majorVer = CInt(Split(versionPart, ".")(0))
+                If majorVer >= 20 Then
+                    ' Add to PATH for this process so subsequent calls find it
+                    nodeDir = fso.GetParentFolderName(nodePath)
+                    currentPath = WshShell.Environment("Process").Item("PATH")
+                    WshShell.Environment("Process").Item("PATH") = nodeDir & ";" & currentPath
+                    HasNode = True
+                    Exit Function
+                End If
+            End If
+        End If
+    End If
     HasNode = False
 End Function
 
@@ -45,6 +71,8 @@ Function FindNodePath()
     On Error Resume Next
     ' Check common Node.js install locations (in order of likelihood)
     candidates = Array( _
+        WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\opencode-studio\nodejs\node.exe"), _
+        WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\nodejs\node.exe"), _
         WshShell.ExpandEnvironmentStrings("%ProgramFiles%\nodejs\node.exe"), _
         WshShell.ExpandEnvironmentStrings("%ProgramFiles(x86)%\nodejs\node.exe"), _
         WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\nvm4w\nodejs\node.exe"), _
@@ -119,8 +147,11 @@ If Not HasNode() Then
             arch = "arm64"
         End If
 
-        ' --- Install Node.js via PowerShell (visible window so user sees progress) ---
-        psScript = "$ProgressPreference='SilentlyContinue';" & _
+        ' --- Install Node.js via PowerShell (portable zip - no admin rights needed) ---
+        ' Uses zip extraction instead of MSI to avoid admin/UAC issues.
+        ' Also forces TLS 1.2 (PowerShell 5.1 defaults to TLS 1.0 which nodejs.org rejects).
+        psScript = "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;" & _
+                    "$ProgressPreference='SilentlyContinue';" & _
                     "Write-Host '=== OpenCode Studio Setup ===' -ForegroundColor Cyan;" & _
                     "Write-Host '';" & _
                     "Write-Host 'Fetching latest Node.js LTS version...' -ForegroundColor Yellow;" & _
@@ -128,19 +159,32 @@ If Not HasNode() Then
                     "  $ltsInfo = Invoke-RestMethod -Uri 'https://nodejs.org/dist/index.json' -ErrorAction Stop;" & _
                     "  $ltsVersion = ($ltsInfo | Where-Object { $_.lts -ne $false } | Select-Object -First 1).version;" & _
                     "  if (-not $ltsVersion) { $ltsVersion = 'v22.16.0' };" & _
-                    "  Write-Host ""Downloading Node.js $ltsVersion (" & arch & ")..."" -ForegroundColor Yellow;" & _
-                    "  $nodeUrl = ""https://nodejs.org/dist/$ltsVersion/node-$ltsVersion-" & arch & ".msi"";" & _
-                    "  Invoke-WebRequest -Uri $nodeUrl -OutFile $env:TEMP\node-install.msi -ErrorAction Stop;" & _
-                    "  Write-Host 'Installing Node.js (this may take a minute)...' -ForegroundColor Yellow;" & _
-                    "  Start-Process msiexec.exe -ArgumentList '/i',""$env:TEMP\node-install.msi"",'/quiet','/norestart' -Wait;" & _
-                    "  Remove-Item $env:TEMP\node-install.msi -Force -ErrorAction SilentlyContinue;" & _
-                    "  Write-Host '';" & _
-                    "  Write-Host 'Node.js installed successfully!' -ForegroundColor Green;" & _
+                    "  Write-Host ""Downloading Node.js $ltsVersion (portable " & arch & ")..."" -ForegroundColor Yellow;" & _
+                    "  $zipUrl = ""https://nodejs.org/dist/$ltsVersion/node-$ltsVersion-win-" & arch & ".zip"";" & _
+                    "  Invoke-WebRequest -Uri $zipUrl -OutFile $env:TEMP\ocs-node.zip -ErrorAction Stop;" & _
+                    "  Write-Host 'Extracting Node.js...' -ForegroundColor Yellow;" & _
+                    "  $extractDir = ""$env:LOCALAPPDATA\opencode-studio\nodejs"";" & _
+                    "  $tempExtract = ""$env:TEMP\ocs-node-extract"";" & _
+                    "  if (Test-Path $tempExtract) { Remove-Item $tempExtract -Recurse -Force };" & _
+                    "  Expand-Archive -Path $env:TEMP\ocs-node.zip -DestinationPath $tempExtract -Force;" & _
+                    "  $inner = Get-ChildItem $tempExtract -Directory | Select-Object -First 1;" & _
+                    "  if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force };" & _
+                    "  Move-Item $inner.FullName $extractDir -Force;" & _
+                    "  Remove-Item $tempExtract -Recurse -Force;" & _
+                    "  Remove-Item $env:TEMP\ocs-node.zip -Force -ErrorAction SilentlyContinue;" & _
+                    "  $userPath = [Environment]::GetEnvironmentVariable('PATH', 'User');" & _
+                    "  if ($userPath -notlike ""*$extractDir*"") { [Environment]::SetEnvironmentVariable('PATH', ""$userPath;$extractDir"", 'User') };" & _
+                    "  $env:PATH = ""$extractDir;$env:PATH"";" & _
+                    "  if (Test-Path ""$extractDir\node.exe"") {" & _
+                    "    Write-Host '';" & _
+                    "    Write-Host 'Node.js installed successfully!' -ForegroundColor Green;" & _
+                    "    & ""$extractDir\node.exe"" -v" & _
+                    "  } else { throw 'node.exe not found after extraction' }" & _
                     "} catch {" & _
                     "  Write-Host ""Error: $_"" -ForegroundColor Red;" & _
                     "  Write-Host 'Please install Node.js manually from https://nodejs.org/' -ForegroundColor Red;" & _
                     "  Read-Host 'Press Enter to exit';" & _
-                    "  exit 1;" & _
+                    "  exit 1" & _
                     "}"
 
         ' Run PowerShell visible so user sees download/install progress
@@ -149,7 +193,7 @@ If Not HasNode() Then
         ' Refresh PATH so we can find node now
         RefreshPath
 
-        ' Verify installation — try multiple times with delays (MSI may still be finishing)
+        ' Verify installation — try multiple times with delays
         nodeInstalled = False
         For attempt = 1 To 3
             If HasNode() Then
@@ -191,13 +235,22 @@ End If
 '==========================================================================
 ' STEP 2: Install npm dependencies
 '==========================================================================
+' Enable long paths support on Windows (node_modules nesting can exceed 260 chars)
+' This is a per-user registry key that npm also checks.
+On Error Resume Next
+WshShell.RegWrite "HKCU\Environment\NPM_CONFIG_LONGPATHS\", "true", "REG_SZ"
+On Error GoTo 0
+
 ' Use a visible cmd window so the user sees progress (not a "terminal" - it's an install window)
+' Retry up to 2 times: if the first npm install fails, clean node_modules and try again.
 installCmd = "cmd /c cd /d """ & scriptDir & """ && " & _
              "echo ============================================ && " & _
              "echo    Installing OpenCode Studio dependencies    && " & _
              "echo ============================================ && " & _
              "echo. && " & _
-             "npm install && " & _
+             "(npm install || (echo. && echo npm install failed, cleaning and retrying... && " & _
+             "rmdir /s /q node_modules 2>nul && rmdir /s /q server\node_modules 2>nul && " & _
+             "rmdir /s /q client-next\node_modules 2>nul && npm install)) && " & _
              "echo. && " & _
              "echo ============================================ && " & _
              "echo    Installation complete!                    && " & _

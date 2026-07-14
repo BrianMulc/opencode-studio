@@ -153,7 +153,6 @@ app.use((req, res, next) => {
 });
 
 const ALLOWED_ORIGINS = [
-        'http://192.168.10.100:1080',
     /^http:\/\/192\.168\..+:108\d$/,
     /^http:\/\/192\.168\.10\.\d{1,3}:108\d$/,
     'http://localhost:1080',
@@ -6001,7 +6000,7 @@ async function startServer() {
     ['google', 'anthropic', 'openai', 'xai', 'openrouter', 'together', 'mistral', 'deepseek', 'amazon-bedrock', 'azure', 'github-copilot'].forEach(p => importCurrentAuthToPool(p));
 
     const port = await findAvailablePort(DEFAULT_PORT);
-    app.listen(port, () => {
+    app.listen(port, '127.0.0.1', () => {
         console.log(`Server running at http://localhost:${port}`);
         serverStartTime = Date.now();
         lastHeartbeat = Date.now(); // start the clock; grace period gives client time to boot
@@ -6015,7 +6014,7 @@ async function startServer() {
             const clientDir = path.join(__dirname, '..', 'client-next');
             const devScript = path.join(clientDir, 'dev-with-port.js');
             if (fs.existsSync(devScript)) {
-                clientProcess = spawn('node', [devScript], {
+                clientProcess = spawn(process.execPath, [devScript], {
                     cwd: clientDir,
                     stdio: 'pipe', // pipe so the process doesn't get killed
                     detached: false,
