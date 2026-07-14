@@ -96,14 +96,10 @@ function classifyModel(modelString, policy = {}, providersConfig = {}) {
     return 'cloud';
 }
 
-// The core rule: local models can NEVER delegate to cloud models.
-// Cloud models can delegate to both local and cloud.
-// Local models can delegate to other local models.
+// The core rule: zero data crossover between local and cloud.
+// Local can only delegate to local. Cloud can only delegate to cloud.
 function isDelegationAllowed(sourceClassification, targetClassification) {
-    if (sourceClassification === 'local' && targetClassification === 'cloud') {
-        return false;
-    }
-    return true;
+    return sourceClassification === targetClassification;
 }
 
 // Validate all agents against the delegation policy.
@@ -116,7 +112,6 @@ function validateDelegationPolicy(agents, policy, providersConfig) {
 
     for (const primary of primaryAgents) {
         const primaryClass = classifyModel(primary.model, policy, providersConfig);
-        if (primaryClass !== 'local') continue; // only local primaries can violate
 
         // Check if this primary agent has task permission (can delegate)
         const perm = primary.permission || primary.permissions || {};
@@ -250,17 +245,15 @@ export const DelegationGuardPlugin = async ({ project, client, $, directory, wor
       const currentModel = agentModels[currentAgentName] || config.model?.default || null;
       const currentClass = classifyModel(currentModel, providersConfig);
 
-      // Only local models are restricted
-      if (currentClass !== 'local') return;
-
       // Determine the target subagent
       const input = event.tool.input || {};
       const targetAgent = input.subagent_type || input.agent || input.type || input.subagent || 'general';
       const targetModel = agentModels[targetAgent] || null;
       const targetClass = classifyModel(targetModel, providersConfig);
 
-      if (targetClass === 'cloud') {
-        const reason = \`BLOCKED: Agent '\${currentAgentName}' is using a local model (\${currentModel || 'default'}) and cannot delegate to agent '\${targetAgent}' which uses a cloud model (\${targetModel || 'default'}). This prevents sensitive data from being sent to an external API. To change this, update the model policy in OpenCode Studio settings.\`;
+      // Zero data crossover: local can only delegate to local, cloud can only delegate to cloud
+      if (currentClass !== targetClass) {
+        const reason = `BLOCKED: Agent '${currentAgentName}' is using a ${currentClass} model (${currentModel || 'default'}) and cannot delegate to agent '${targetAgent}' which uses a ${targetClass} model (${targetModel || 'default'}). This prevents data crossover between local and cloud models. To change this, update the model policy in OpenCode Studio settings.`;
         console.error('[DelegationGuard]', reason);
         return { abort: true, reason };
       }

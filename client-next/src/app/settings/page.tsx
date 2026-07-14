@@ -793,7 +793,7 @@ const [systemPrompt, setSystemPrompt] = useState("");
                 </div>
               </div>
               <CardDescription>
-                Prevents local models from delegating to cloud models — blocks sensitive data from being sent to external APIs.
+                Prevents data crossover between local and cloud models — local can only delegate to local, cloud can only delegate to cloud.
               </CardDescription>
             </CardHeader>
           </CollapsibleTrigger>
@@ -804,8 +804,8 @@ const [systemPrompt, setSystemPrompt] = useState("");
                 <div className="space-y-0.5">
                   <Label className="text-sm font-medium">Enable delegation guard</Label>
                   <p className="text-xs text-muted-foreground">
-                    When enabled, a runtime plugin is installed that blocks local-model agents from delegating to cloud-model subagents.
-                    Cloud models can still delegate to both local and cloud models.
+                    When enabled, a runtime plugin is installed that blocks any cross-classification delegation.
+                    Local models can only delegate to local models, and cloud models can only delegate to cloud models.
                   </p>
                 </div>
                 <Switch
@@ -821,10 +821,6 @@ const [systemPrompt, setSystemPrompt] = useState("");
                 <div className="space-y-1.5 text-sm">
                   <div className="flex items-center gap-2">
                     <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
-                    <span><strong>Cloud → Local</strong>: Allowed</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
                     <span><strong>Cloud → Cloud</strong>: Allowed</span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -833,7 +829,11 @@ const [systemPrompt, setSystemPrompt] = useState("");
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="inline-block w-2 h-2 rounded-full bg-red-500" />
-                    <span><strong>Local → Cloud</strong>: Blocked (data exfiltration risk)</span>
+                    <span><strong>Local → Cloud</strong>: Blocked (data crossover)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block w-2 h-2 rounded-full bg-red-500" />
+                    <span><strong>Cloud → Local</strong>: Blocked (data crossover)</span>
                   </div>
                 </div>
               </div>
