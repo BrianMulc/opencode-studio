@@ -179,6 +179,7 @@
       "github": "GitHub",
       "updateAvailable": "Update available - click to update"
     },
+    "updateBadge": "Update Available",
     "disconnectDialog": {
       "title": "Disconnect Backend?",
       "description": "This will shut down the backend server. You'll need to relaunch it to make changes to your OpenCode configuration.",

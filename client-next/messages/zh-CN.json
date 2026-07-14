@@ -179,6 +179,7 @@
       "github": "GitHub",
       "updateAvailable": "\u6709\u53ef\u7528\u66f4\u65b0 - \u70b9\u51fb\u66f4\u65b0"
     },
+    "updateBadge": "\u6709\u53ef\u7528\u66f4\u65b0",
     "disconnectDialog": {
       "title": "\u65ad\u5f00\u540e\u7aef\uff1f",
       "description": "\u5c06\u5173\u95ed\u540e\u7aef\u670d\u52a1\u5668\u3002\u9700\u8981\u91cd\u65b0\u542f\u52a8\u624d\u80fd\u4fee\u6539 OpenCode \u914d\u7f6e\u3002",

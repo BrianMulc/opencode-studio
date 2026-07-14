@@ -163,6 +163,25 @@ export function Sidebar() {
               </Tooltip>
             );
           })}
+          {updateAvailable && (
+            <Link href="/settings" className="block mx-4 mt-3">
+              <div
+                className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all hover:scale-[1.02] cursor-pointer"
+                style={{
+                  background: 'color-mix(in srgb, var(--oc-primary, #6366f1) 15%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--oc-primary, #6366f1) 40%, transparent)',
+                  color: 'var(--oc-primary, #6366f1)',
+                }}
+              >
+                <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: 'var(--oc-primary, #6366f1)' }} />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5" style={{ background: 'var(--oc-primary, #6366f1)' }} />
+                </span>
+                <span className="flex-1">{t('updateBadge')}</span>
+                <Reload className="h-3.5 w-3.5 flex-shrink-0" />
+              </div>
+            </Link>
+          )}
         </div>
 
         <div className="p-4 flex items-center justify-between" style={{ borderTop: '1px solid var(--oc-border-weak)' }}>
@@ -173,21 +192,6 @@ export function Sidebar() {
             </span>
           </div>
           <div className="flex items-center gap-1">
-            {updateAvailable && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" asChild className="relative">
-                    <Link href="/settings">
-                      <Reload className="h-4 w-4 text-green-500" />
-                      <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-                    </Link>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{t('tooltips.updateAvailable')}</p>
-                </TooltipContent>
-              </Tooltip>
-            )}
             {!connected && (
               <Tooltip>
                 <TooltipTrigger asChild>
