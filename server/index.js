@@ -1314,15 +1314,17 @@ let clientProcess = null;
 let lastHeartbeat = null; // null = not started yet; set when server starts listening
 let serverStartTime = null;
 const HEARTBEAT_TIMEOUT_MS = 180000; // 3 minutes with no ping = shut down (accounts for browser tab throttling)
-const HEARTBEAT_GRACE_MS = 90000;   // 90s grace period for initial client startup
+const HEARTBEAT_GRACE_MS = 600000;   // 10 min grace for initial startup: a one-time client build on a slow laptop can take that long
 
 app.post('/api/heartbeat', (req, res) => {
     lastHeartbeat = Date.now();
     res.json({ ok: true });
 });
 
-// Check heartbeat every 3 seconds; if no ping for 15s, shut down
-// But only after the grace period (client needs time to boot Next.js)
+// Check heartbeat every 3 seconds; shut down when no ping arrives within the
+// timeout. During the initial grace window the timeout equals the grace period,
+// so the server survives a slow first-time client build; afterwards the shorter
+// steady-state timeout applies (client needs time to boot Next.js).
 setInterval(() => {
     if (lastHeartbeat === null) return; // server not fully started yet
     const elapsed = Date.now() - lastHeartbeat;
