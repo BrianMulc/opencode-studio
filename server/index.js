@@ -6143,11 +6143,11 @@ async function startServer() {
                 console.log('Client process started');
 
                 // Poll for client readiness and open browser automatically.
-                // Keep trying for 5 minutes: on slow laptops the first startup
-                // (especially in dev fallback mode) can take far longer than the
-                // old 70s cutoff, after which the browser simply never opened.
+                // Keep trying for 10 minutes: a first boot after an update may
+                // include a one-time production build of the client, which can
+                // take several minutes on a slow laptop.
                 const frontendUrl = 'http://localhost:1080';
-                const CLIENT_READY_TIMEOUT_MS = 300000;
+                const CLIENT_READY_TIMEOUT_MS = 600000;
                 let browserOpened = false;
                 const checkClient = () => {
                     if (browserOpened) return;
