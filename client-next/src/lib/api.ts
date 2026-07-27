@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { OpencodeConfig, SkillFile, PluginFile, SkillInfo, PluginInfo, AuthInfo, AuthProvider, StudioConfig, PluginModelsConfig, AuthProfilesInfo, Preset, PresetConfig, AgentConfig, AgentInfo, AgentsResponse, SystemToolInfo, RulesResponse, MCPConfig, OhMyPreferences, OhMyConfigResponse, GitHubBackupStatus, GitHubBackupResult, GitHubBackupConfig, ConfigProviderId, ConfigProviderCreatePayload, ConfigProviderCreateProfilePayload, ConfigProviderCreateProfileResult, ConfigProviderCreateResult, ConfigProviderDetail, ConfigProviderExportResult, ConfigProviderImportPayload, ConfigProviderImportResult, ConfigProviderProfilesResult, ConfigProviderSavePayload, ConfigProviderSaveResult, ConfigProviderSummary, ConfigProviderSwitchProfilePayload, ConfigProviderSwitchProfileResult, ConfigProviderValidationPayload, ConfigProviderValidationResult, ConfigProviderRevision, ConfigProviderProfile } from '@/types';
+import type { OpencodeConfig, SkillFile, PluginFile, SkillInfo, PluginInfo, AuthInfo, AuthProvider, StudioConfig, PluginModelsConfig, AuthProfilesInfo, Preset, PresetConfig, AgentConfig, AgentInfo, AgentsResponse, SystemToolInfo, RulesResponse, MCPConfig, OhMyPreferences, OhMyConfigResponse, GitHubBackupStatus, GitHubBackupResult, GitHubBackupConfig, ConfigProviderId, ConfigProviderCreatePayload, ConfigProviderCreateProfilePayload, ConfigProviderCreateProfileResult, ConfigProviderCreateResult, ConfigProviderDetail, ConfigProviderExportResult, ConfigProviderImportPayload, ConfigProviderImportResult, ConfigProviderProfilesResult, ConfigProviderSavePayload, ConfigProviderSaveResult, ConfigProviderSummary, ConfigProviderSwitchProfilePayload, ConfigProviderSwitchProfileResult, ConfigProviderValidationPayload, ConfigProviderValidationResult, ConfigProviderRevision, ConfigProviderProfile, PermissionConfig } from '@/types';
 
 const BACKEND_BASE_PORT = 1920;
 const MAX_PORT_TRIES = 10;
@@ -208,8 +208,9 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
 }
 
 export async function performUpdate(): Promise<{ success: boolean; message: string }> {
-  // Long timeout: npm install can take 3+ minutes on slow connections
-  const { data } = await api.post<{ success: boolean; message: string }>('/update/perform', {}, { timeout: 300000 });
+  // Long timeout: npm install plus a production client build can take
+  // 10+ minutes on slow laptops/connections
+  const { data } = await api.post<{ success: boolean; message: string }>('/update/perform', {}, { timeout: 900000 });
   return data;
 }
 
@@ -219,7 +220,7 @@ export interface AgentPresetConfig {
   model: string;
   temperature: number;
   color: string;
-  permission: Record<string, string>;
+  permission: PermissionConfig;
   disable: boolean;
   hidden: boolean;
   prompt: string;

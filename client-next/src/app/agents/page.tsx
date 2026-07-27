@@ -306,13 +306,13 @@ export default function AgentsPage() {
     }
     const config: AgentPresetConfig = {
       description: form.description,
-      mode: form.mode,
+      mode: form.mode || "subagent",
       model: form.model,
       temperature: form.temperature,
       color: form.color,
       permission: form.permission,
-      disable: form.disable,
-      hidden: form.hidden,
+      disable: form.disable || false,
+      hidden: form.hidden || false,
       prompt: form.prompt,
     };
     try {

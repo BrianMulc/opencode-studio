@@ -129,6 +129,17 @@ echo "=========================================="
 npm install
 echo "[OK] Dependencies installed!"
 
+# --- Build the frontend (one-time - makes every startup much faster) ---
+echo ""
+echo "=========================================="
+echo "   Building app (one-time)..."
+echo "=========================================="
+if npm run build; then
+    echo "[OK] Build complete!"
+else
+    echo "[!] Build failed - the app will still work, just with slower startup."
+fi
+
 # --- Create launcher script ---
 echo ""
 echo "=========================================="

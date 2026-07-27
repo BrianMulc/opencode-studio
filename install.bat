@@ -1,4 +1,6 @@
 @echo off
 echo Installing OpenCode Studio dependencies...
 call npm install
+echo Building app (one-time - makes startup much faster)...
+call npm run build || echo Build failed - the app will still work, just with slower startup.
 echo Installation complete!

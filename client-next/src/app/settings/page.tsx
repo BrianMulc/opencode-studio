@@ -750,7 +750,7 @@ const [systemPrompt, setSystemPrompt] = useState("");
                     </div>
                   )}
 
-                  <Button variant="outline" onClick={handleCheckUpdate} disabled={checkingUpdate} className="w-full">
+                  <Button variant="outline" onClick={() => handleCheckUpdate()} disabled={checkingUpdate} className="w-full">
                     <Reload className="mr-2 h-4 w-4" />
                     {t('updates.checkAgain')}
                   </Button>
@@ -758,7 +758,7 @@ const [systemPrompt, setSystemPrompt] = useState("");
               ) : (
                 <div className="space-y-3">
                   <p className="text-sm text-muted-foreground">{t('updates.notCheckedYet')}</p>
-                  <Button variant="outline" onClick={handleCheckUpdate} disabled={checkingUpdate} className="w-full">
+                  <Button variant="outline" onClick={() => handleCheckUpdate()} disabled={checkingUpdate} className="w-full">
                     {checkingUpdate ? <Loader className="mr-2 h-4 w-4 animate-spin" /> : <Reload className="mr-2 h-4 w-4" />}
                     {t('updates.checkNow')}
                   </Button>

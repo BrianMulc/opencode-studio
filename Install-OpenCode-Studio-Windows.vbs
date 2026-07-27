@@ -253,6 +253,12 @@ installCmd = "cmd /c cd /d """ & scriptDir & """ && " & _
              "rmdir /s /q client-next\node_modules 2>nul && npm install)) && " & _
              "echo. && " & _
              "echo ============================================ && " & _
+             "echo    Building app (one-time - makes startup     && " & _
+             "echo    much faster)                               && " & _
+             "echo ============================================ && " & _
+             "(npm run build || (echo. && echo Build failed - the app will still work, just with slower startup.)) && " & _
+             "echo. && " & _
+             "echo ============================================ && " & _
              "echo    Installation complete!                    && " & _
              "echo ============================================"
 

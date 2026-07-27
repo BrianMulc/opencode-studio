@@ -1,4 +1,6 @@
 #!/bin/bash
 echo "Installing OpenCode Studio dependencies..."
 npm install
+echo "Building app (one-time - makes startup much faster)..."
+npm run build || echo "Build failed - the app will still work, just with slower startup."
 echo "Installation complete!"

@@ -1477,15 +1477,30 @@ app.post('/api/update/perform', async (req, res) => {
         runNpmInstall(path.join(projectRoot, 'server'));
         runNpmInstall(path.join(projectRoot, 'client-next'));
 
-        res.json({ success: true, message: 'Update complete. Restarting...' });
+        // Kill the client before rebuilding: a running Next.js server (especially
+        // in dev mode) actively uses .next and can break the build via locked or
+        // mismatched files. The browser page stays alive and reconnects via health
+        // polling once the new server is up.
+        try { if (clientProcess) clientProcess.kill('SIGTERM'); } catch {}
 
-        // Clear Next.js cache so stale chunks don't cause issues after update
+        // Rebuild the client so the next start runs the fast production server
+        // instead of the dev compiler. If the build fails, clear .next and continue
+        // anyway: the launcher then falls back to dev mode (previous behavior).
+        let buildOk = false;
         try {
-            const nextCacheDir = path.join(projectRoot, 'client-next', '.next');
-            if (fs.existsSync(nextCacheDir)) {
-                fs.rmSync(nextCacheDir, { recursive: true, force: true });
-            }
-        } catch {}
+            execSync('npm run build', { cwd: path.join(projectRoot, 'client-next'), encoding: 'utf8', stdio: 'pipe', timeout: 900000 });
+            buildOk = true;
+        } catch (buildErr) {
+            console.error('[Update] Client build failed, falling back to dev mode:', buildErr.message);
+            try { fs.rmSync(path.join(projectRoot, 'client-next', '.next'), { recursive: true, force: true }); } catch {}
+        }
+
+        res.json({
+            success: true,
+            message: buildOk
+                ? 'Update complete. Restarting...'
+                : 'Update complete, but the client rebuild failed - the app will start in slower dev mode. Restarting...'
+        });
 
         // Auto-restart: spawn a new server process (which will spawn a fresh client)
         // then exit this one. Use process.execPath so it works regardless of how
@@ -6110,9 +6125,9 @@ async function startServer() {
         } else {
         try {
             const clientDir = path.join(__dirname, '..', 'client-next');
-            const devScript = path.join(clientDir, 'dev-with-port.js');
-            if (fs.existsSync(devScript)) {
-                clientProcess = spawn(process.execPath, [devScript], {
+            const startScript = path.join(clientDir, 'start-with-port.js');
+            if (fs.existsSync(startScript)) {
+                clientProcess = spawn(process.execPath, [startScript], {
                     cwd: clientDir,
                     stdio: 'pipe', // pipe so the process doesn't get killed
                     detached: false,
@@ -6127,24 +6142,38 @@ async function startServer() {
                 });
                 console.log('Client process started');
 
-                // Poll for client readiness and open browser automatically
+                // Poll for client readiness and open browser automatically.
+                // Keep trying for 5 minutes: on slow laptops the first startup
+                // (especially in dev fallback mode) can take far longer than the
+                // old 70s cutoff, after which the browser simply never opened.
                 const frontendUrl = 'http://localhost:1080';
+                const CLIENT_READY_TIMEOUT_MS = 300000;
+                let browserOpened = false;
                 const checkClient = () => {
+                    if (browserOpened) return;
                     const http = require('http');
-                    http.get(frontendUrl, (res) => {
-                        if (res.statusCode === 200) {
+                    const req = http.get(frontendUrl, (res) => {
+                        if (res.statusCode < 500) {
+                            if (browserOpened) return;
+                            browserOpened = true;
                             console.log('[AutoOpen] Frontend ready, opening browser...');
                             const openCmd = process.platform === 'win32' ? `start "" "${frontendUrl}"` : process.platform === 'darwin' ? `open "${frontendUrl}"` : `xdg-open "${frontendUrl}"`;
                             exec(openCmd, () => {});
-                        }
-                    }).on('error', () => {
-                        // Not ready yet, try again in 2 seconds (up to 30 times = 60s)
-                        if (Date.now() - serverStartTime < 70000) {
-                            setTimeout(checkClient, 2000);
+                        } else if (Date.now() - serverStartTime < CLIENT_READY_TIMEOUT_MS) {
+                            setTimeout(checkClient, 1000);
                         }
                     });
+                    req.on('error', () => {
+                        // Not ready yet, try again in 1 second
+                        if (Date.now() - serverStartTime < CLIENT_READY_TIMEOUT_MS) {
+                            setTimeout(checkClient, 1000);
+                        }
+                    });
+                    // A slow compile can hold the request open; don't let one
+                    // hung request stop us from re-checking.
+                    req.setTimeout(15000, () => req.destroy());
                 };
-                setTimeout(checkClient, 3000); // start checking after 3s
+                setTimeout(checkClient, 1000); // start checking after 1s
             }
         } catch (err) {
             console.error('Failed to start client process:', err.message);
