@@ -150,45 +150,68 @@ If Not HasNode() Then
         ' --- Install Node.js via PowerShell (portable zip - no admin rights needed) ---
         ' Uses zip extraction instead of MSI to avoid admin/UAC issues.
         ' Also forces TLS 1.2 (PowerShell 5.1 defaults to TLS 1.0 which nodejs.org rejects).
-        psScript = "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;" & _
-                    "$ProgressPreference='SilentlyContinue';" & _
-                    "Write-Host '=== OpenCode Studio Setup ===' -ForegroundColor Cyan;" & _
-                    "Write-Host '';" & _
-                    "Write-Host 'Fetching latest Node.js LTS version...' -ForegroundColor Yellow;" & _
-                    "try {" & _
-                    "  $ltsInfo = Invoke-RestMethod -Uri 'https://nodejs.org/dist/index.json' -ErrorAction Stop;" & _
-                    "  $ltsVersion = ($ltsInfo | Where-Object { $_.lts -ne $false } | Select-Object -First 1).version;" & _
-                    "  if (-not $ltsVersion) { $ltsVersion = 'v22.16.0' };" & _
-                    "  Write-Host ""Downloading Node.js $ltsVersion (portable " & arch & ")..."" -ForegroundColor Yellow;" & _
-                    "  $zipUrl = ""https://nodejs.org/dist/$ltsVersion/node-$ltsVersion-win-" & arch & ".zip"";" & _
-                    "  Invoke-WebRequest -Uri $zipUrl -OutFile $env:TEMP\ocs-node.zip -ErrorAction Stop;" & _
-                    "  Write-Host 'Extracting Node.js...' -ForegroundColor Yellow;" & _
-                    "  $extractDir = ""$env:LOCALAPPDATA\opencode-studio\nodejs"";" & _
-                    "  $tempExtract = ""$env:TEMP\ocs-node-extract"";" & _
-                    "  if (Test-Path $tempExtract) { Remove-Item $tempExtract -Recurse -Force };" & _
-                    "  Expand-Archive -Path $env:TEMP\ocs-node.zip -DestinationPath $tempExtract -Force;" & _
-                    "  $inner = Get-ChildItem $tempExtract -Directory | Select-Object -First 1;" & _
-                    "  if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force };" & _
-                    "  Move-Item $inner.FullName $extractDir -Force;" & _
-                    "  Remove-Item $tempExtract -Recurse -Force;" & _
-                    "  Remove-Item $env:TEMP\ocs-node.zip -Force -ErrorAction SilentlyContinue;" & _
-                    "  $userPath = [Environment]::GetEnvironmentVariable('PATH', 'User');" & _
-                    "  if ($userPath -notlike ""*$extractDir*"") { [Environment]::SetEnvironmentVariable('PATH', ""$userPath;$extractDir"", 'User') };" & _
-                    "  $env:PATH = ""$extractDir;$env:PATH"";" & _
-                    "  if (Test-Path ""$extractDir\node.exe"") {" & _
-                    "    Write-Host '';" & _
-                    "    Write-Host 'Node.js installed successfully!' -ForegroundColor Green;" & _
-                    "    & ""$extractDir\node.exe"" -v" & _
-                    "  } else { throw 'node.exe not found after extraction' }" & _
-                    "} catch {" & _
-                    "  Write-Host ""Error: $_"" -ForegroundColor Red;" & _
-                    "  Write-Host 'Please install Node.js manually from https://nodejs.org/' -ForegroundColor Red;" & _
-                    "  Read-Host 'Press Enter to exit';" & _
-                    "  exit 1" & _
-                    "}"
+        '
+        ' IMPORTANT: the script is written to a temp .ps1 and run with -File.
+        ' The previous version passed it inline via -Command "..." — the script's
+        ' own double quotes were consumed by Windows command-line tokenization,
+        ' so PowerShell received a syntactically invalid script and died with a
+        ' ParserError on EVERY machine without Node.js. That is the "Node.js
+        ' fails to install for every single person" bug.
+        psScript = "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;" & vbCrLf & _
+                    "$ProgressPreference='SilentlyContinue';" & vbCrLf & _
+                    "$logDir = ""$env:LOCALAPPDATA\opencode-studio"";" & vbCrLf & _
+                    "New-Item -ItemType Directory -Force -Path $logDir | Out-Null;" & vbCrLf & _
+                    "try { Start-Transcript -Path ""$logDir\install-node.log"" -Force -ErrorAction Stop | Out-Null } catch {};" & vbCrLf & _
+                    "Write-Host '=== OpenCode Studio Setup ===' -ForegroundColor Cyan;" & vbCrLf & _
+                    "Write-Host '';" & vbCrLf & _
+                    "Write-Host 'Fetching latest Node.js LTS version...' -ForegroundColor Yellow;" & vbCrLf & _
+                    "try {" & vbCrLf & _
+                    "  $ltsInfo = Invoke-RestMethod -Uri 'https://nodejs.org/dist/index.json' -ErrorAction Stop;" & vbCrLf & _
+                    "  $ltsVersion = ($ltsInfo | Where-Object { $_.lts -ne $false } | Select-Object -First 1).version;" & vbCrLf & _
+                    "  if (-not $ltsVersion) { $ltsVersion = 'v22.16.0' };" & vbCrLf & _
+                    "  Write-Host ""Downloading Node.js $ltsVersion (portable " & arch & ")..."" -ForegroundColor Yellow;" & vbCrLf & _
+                    "  $zipUrl = ""https://nodejs.org/dist/$ltsVersion/node-$ltsVersion-win-" & arch & ".zip"";" & vbCrLf & _
+                    "  Invoke-WebRequest -Uri $zipUrl -OutFile $env:TEMP\ocs-node.zip -ErrorAction Stop;" & vbCrLf & _
+                    "  Write-Host 'Extracting Node.js...' -ForegroundColor Yellow;" & vbCrLf & _
+                    "  $extractDir = ""$env:LOCALAPPDATA\opencode-studio\nodejs"";" & vbCrLf & _
+                    "  $tempExtract = ""$env:TEMP\ocs-node-extract"";" & vbCrLf & _
+                    "  if (Test-Path $tempExtract) { Remove-Item $tempExtract -Recurse -Force };" & vbCrLf & _
+                    "  Expand-Archive -Path $env:TEMP\ocs-node.zip -DestinationPath $tempExtract -Force;" & vbCrLf & _
+                    "  $inner = Get-ChildItem $tempExtract -Directory | Select-Object -First 1;" & vbCrLf & _
+                    "  if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force };" & vbCrLf & _
+                    "  Move-Item $inner.FullName $extractDir -Force;" & vbCrLf & _
+                    "  Remove-Item $tempExtract -Recurse -Force;" & vbCrLf & _
+                    "  Remove-Item $env:TEMP\ocs-node.zip -Force -ErrorAction SilentlyContinue;" & vbCrLf & _
+                    "  $userPath = [Environment]::GetEnvironmentVariable('PATH', 'User');" & vbCrLf & _
+                    "  if ($userPath -notlike ""*$extractDir*"") { [Environment]::SetEnvironmentVariable('PATH', ""$userPath;$extractDir"", 'User') };" & vbCrLf & _
+                    "  $env:PATH = ""$extractDir;$env:PATH"";" & vbCrLf & _
+                    "  if (Test-Path ""$extractDir\node.exe"") {" & vbCrLf & _
+                    "    Write-Host '';" & vbCrLf & _
+                    "    Write-Host 'Node.js installed successfully!' -ForegroundColor Green;" & vbCrLf & _
+                    "    & ""$extractDir\node.exe"" -v" & vbCrLf & _
+                    "  } else { throw 'node.exe not found after extraction' }" & vbCrLf & _
+                    "} catch {" & vbCrLf & _
+                    "  Write-Host ""Error: $_"" -ForegroundColor Red;" & vbCrLf & _
+                    "  Write-Host 'Please install Node.js manually from https://nodejs.org/' -ForegroundColor Red;" & vbCrLf & _
+                    "  try { Stop-Transcript | Out-Null } catch {};" & vbCrLf & _
+                    "  Read-Host 'Press Enter to exit';" & vbCrLf & _
+                    "  exit 1" & vbCrLf & _
+                    "}" & vbCrLf & _
+                    "try { Stop-Transcript | Out-Null } catch {}" & vbCrLf
 
-        ' Run PowerShell visible so user sees download/install progress
-        WshShell.Run "powershell -NoProfile -ExecutionPolicy Bypass -Command """ & psScript & """", 1, True
+        ' Write the script to a temp .ps1 (content is pure ASCII) and run it.
+        psFile = tempDir & "\ocs-node-install.ps1"
+        Set psOut = fso.CreateTextFile(psFile, True, False)
+        psOut.Write psScript
+        psOut.Close
+
+        ' Run PowerShell visible so the user sees download/install progress, and
+        ' capture the exit code so failures are detected immediately.
+        psExitCode = WshShell.Run("powershell -NoProfile -ExecutionPolicy Bypass -File """ & psFile & """", 1, True)
+        fso.DeleteFile psFile, True
+        If psExitCode <> 0 Then
+            WScript.Echo "PowerShell exited with code " & psExitCode
+        End If
 
         ' Refresh PATH so we can find node now
         RefreshPath
@@ -218,10 +241,14 @@ If Not HasNode() Then
         Next
 
         If Not nodeInstalled Then
-            MsgBox "Node.js installation may have failed." & vbCrLf & vbCrLf & _
-                   "Please install Node.js 20+ manually from https://nodejs.org/" & vbCrLf & _
-                   "then run this installer again.", _
-                   16, "OpenCode Studio - Setup"
+            nodeLogPath = WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%") & "\opencode-studio\install-node.log"
+            failMsg = "Node.js installation failed." & vbCrLf & vbCrLf
+            If fso.FileExists(nodeLogPath) Then
+                failMsg = failMsg & "Details were logged to:" & vbCrLf & nodeLogPath & vbCrLf & vbCrLf
+            End If
+            failMsg = failMsg & "Please install Node.js 20+ manually from https://nodejs.org/" & vbCrLf & _
+                      "then run this installer again."
+            MsgBox failMsg, 16, "OpenCode Studio - Setup"
             WScript.Quit(1)
         End If
     Else

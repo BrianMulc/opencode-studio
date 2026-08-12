@@ -10,13 +10,35 @@ Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
 # --- Check Node.js ---
-try {
-    $nodeVersion = node -v 2>$null
-    if (-not $nodeVersion) { throw "Node.js not found" }
+# PATH in this shell may be stale (inherited from explorer.exe before Node was
+# installed), so fall back to probing well-known install locations — including
+# the portable dir our own installer uses — and fix up the session PATH.
+$nodeVersion = $null
+try { $nodeVersion = node -v 2>$null } catch {}
+if (-not $nodeVersion) {
+    $nodeCandidates = @(
+        "$env:LOCALAPPDATA\opencode-studio\nodejs\node.exe",
+        "$env:LOCALAPPDATA\Programs\nodejs\node.exe",
+        "$env:ProgramFiles\nodejs\node.exe",
+        "${env:ProgramFiles(x86)}\nodejs\node.exe",
+        "$env:LOCALAPPDATA\nvm4w\nodejs\node.exe",
+        "$env:APPDATA\nvm\current\node.exe",
+        "$env:USERPROFILE\scoop\apps\nodejs\current\node.exe"
+    )
+    foreach ($candidate in $nodeCandidates) {
+        if (Test-Path $candidate) {
+            $env:PATH = (Split-Path $candidate) + ";$env:PATH"
+            try { $nodeVersion = node -v 2>$null } catch {}
+            if ($nodeVersion) { break }
+        }
+    }
+}
+if ($nodeVersion) {
     Write-Host "[OK] Node.js found: $nodeVersion" -ForegroundColor Green
-} catch {
+} else {
     Write-Host "ERROR: Node.js is not installed or not in PATH." -ForegroundColor Red
     Write-Host "Please install Node.js from https://nodejs.org/"
+    Write-Host "(or run Install-OpenCode-Studio-Windows.vbs to install it automatically)"
     Read-Host "Press Enter to exit"
     exit 1
 }
