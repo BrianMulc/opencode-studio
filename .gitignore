@@ -41,3 +41,6 @@ vendor/
 
 # Changeset (version management - optional)
 .changeset/
+
+# Generated per-machine by register-protocol.js postinstall
+server/launcher.vbs
