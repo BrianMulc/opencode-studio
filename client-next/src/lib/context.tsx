@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { getConfig, saveConfig as apiSaveConfig, getSkills, getPlugins, toggleSkill as apiToggleSkill, togglePlugin as apiTogglePlugin, checkHealth, checkVersion, getPendingAction, clearPendingAction, syncAuto, syncPush, getSyncStatus, type PendingAction, type VersionCheck } from '@/lib/api';
+import { isUpdateInProgress, clearUpdateInProgress } from '@/lib/update-state';
 import type { OpencodeConfig, MCPConfig, SkillInfo, PluginInfo } from '@/types';
 import { UpdateRequiredModal } from '@/components/update-required-modal';
 
@@ -12,6 +13,7 @@ interface AppContextType {
   loading: boolean;
   error: string | null;
   connected: boolean;
+  updateInProgress: boolean;
   pendingAction: PendingAction | null;
   serverVersion: string | null;
   refreshData: () => Promise<void>;
@@ -55,6 +57,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
+  const [updateInProgress, setUpdateInProgress] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [versionInfo, setVersionInfo] = useState<VersionCheck | null>(null);
   const healthCheckRef = useRef<NodeJS.Timeout | null>(null);
@@ -161,9 +164,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
             // been replaced — reload the page to get fresh JavaScript chunks.
             if (wasDisconnectedRef.current) {
               wasDisconnectedRef.current = false;
-              // Small delay to let the new server finish booting
-              // (it may have just started and the Next.js client needs a moment)
-              setTimeout(() => window.location.reload(), 500);
+              clearUpdateInProgress();
+              setUpdateInProgress(false);
+              // Wait until the frontend (this page's origin) actually responds
+              // before reloading: after an update the Next.js client may still
+              // be booting or doing a one-time production build, and reloading
+              // into a dead port would show a browser error page.
+              const waitForFrontend = () => {
+                fetch('/', { method: 'HEAD', cache: 'no-store' })
+                  .then((res) => {
+                    if (res.ok || res.status < 500) {
+                      window.location.reload();
+                    } else {
+                      setTimeout(waitForFrontend, 2000);
+                    }
+                  })
+                  .catch(() => setTimeout(waitForFrontend, 2000));
+              };
+              setTimeout(waitForFrontend, 500);
               return;
             }
             setConnected(true);
@@ -174,6 +192,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         } else {
           if (connected) {
+            // A disconnect mid-update is expected (the server blocks on
+            // git/npm/build, then restarts itself) — flag it so the app shell
+            // shows an "updating" screen instead of the disconnect landing.
+            setUpdateInProgress(isUpdateInProgress());
             setConnected(false);
             setError('Backend disconnected. Attempting to reconnect...');
             checkedPendingRef.current = false;
@@ -182,6 +204,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       } catch {
         if (connected) {
+          setUpdateInProgress(isUpdateInProgress());
           setConnected(false);
           setError('Backend connection lost. Check if the server is still running.');
           wasDisconnectedRef.current = true;
@@ -287,6 +310,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         loading,
         error,
         connected,
+        updateInProgress,
         pendingAction,
         serverVersion: versionInfo?.version || null,
         refreshData,

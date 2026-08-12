@@ -178,8 +178,44 @@ function LoadingState({ isFirstLoad }: { isFirstLoad: boolean }) {
   );
 }
 
+// Shown while a self-update is running. The backend blocks for minutes
+// (git/npm/build) and then restarts itself, which looks exactly like a
+// disconnect to health polling — this screen keeps that moment calm and
+// deliberately has NO restart button (a manual restart mid-update would
+// race the updater). When health polling reconnects the page reloads itself.
+function UpdatingLanding() {
+  const t = useTranslations('appShell');
+  // Escape hatch: if the update somehow hangs (worst case is a ~15 min client
+  // build), offer a manual reload instead of trapping the user forever.
+  const [showRecovery, setShowRecovery] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setShowRecovery(true), 16 * 60 * 1000);
+    return () => clearTimeout(timer);
+  }, []);
+  return (
+    <div className="fixed inset-0 flex flex-col items-center justify-center bg-background overflow-hidden">
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
+      <div className="flex flex-col items-center gap-6 max-w-md text-center px-4">
+        <Logo className="w-20 h-20 animate-pulse" />
+        <Loader className="h-8 w-8 animate-spin text-primary" />
+        <div className="space-y-2">
+          <h1 className="text-xl font-semibold">{t('updating.title')}</h1>
+          <p className="text-muted-foreground">{t('updating.description')}</p>
+        </div>
+        {showRecovery && (
+          <Button variant="outline" onClick={() => window.location.reload()}>
+            {t('updating.reloadAnyway')}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { connected, loading } = useApp();
+  const { connected, loading, updateInProgress } = useApp();
   const isFirstLoad = useIsFirstLoad();
   const pathname = usePathname();
 
@@ -194,6 +230,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   if (!connected) {
+    if (updateInProgress) {
+      return <UpdatingLanding />;
+    }
     return <DisconnectedLanding isFirstLoad={isFirstLoad} />;
   }
 

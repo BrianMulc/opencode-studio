@@ -701,14 +701,26 @@ function saveStudioConfig(config) {
     }
 }
 
+// WSL distributions change rarely, so cache the result: getPaths() is called by
+// nearly every config endpoint, and spawning wsl.exe per request is wasteful.
+// IMPORTANT: use the wrapped execSync from the top of this file (windowsHide: true).
+// Re-requiring raw child_process here previously bypassed the wrapper and flashed
+// a visible console window on every call when the server ran console-less.
+let wslDistributionsCache = null;
+let wslDistributionsCacheTime = 0;
+const WSL_CACHE_TTL_MS = 60000;
 const getWslDistributions = () => {
-    try {
-        const { execSync } = require('child_process');
-        const stdout = execSync('wsl.exe -l -q', { encoding: 'utf16le', stdio: ['ignore', 'pipe', 'pipe'], timeout: 1000 });
-        return stdout.trim().split('\n').filter(d => d.length > 0);
-    } catch {
-        return [];
+    if (wslDistributionsCache !== null && Date.now() - wslDistributionsCacheTime < WSL_CACHE_TTL_MS) {
+        return wslDistributionsCache;
     }
+    try {
+        const stdout = execSync('wsl.exe -l -q', { encoding: 'utf16le', stdio: ['ignore', 'pipe', 'pipe'], timeout: 1000 });
+        wslDistributionsCache = stdout.trim().split('\n').filter(d => d.length > 0);
+    } catch {
+        wslDistributionsCache = [];
+    }
+    wslDistributionsCacheTime = Date.now();
+    return wslDistributionsCache;
 };
 
 const getPaths = () => {
@@ -1285,6 +1297,11 @@ app.post('/api/shutdown', (req, res) => {
 // Pass OCS_SKIP_CLIENT_SPAWN=1 so the new server doesn't spawn another client
 // (the client is already running from the previous server instance).
 app.post('/api/restart', (req, res) => {
+    // Never restart mid-update: the update performs its own respawn at the end,
+    // and a racing restart would spawn a duplicate server fighting for the lock.
+    if (updateInProgress) {
+        return res.status(409).json({ error: 'An update is in progress. The app will restart itself when finished.' });
+    }
     res.json({ success: true });
     // Guard against multiple restart calls
     if (process._restarting) return;
@@ -1342,6 +1359,13 @@ setInterval(() => {
 const UPDATE_REPO = 'BrianMulc/opencode-studio';
 const UPDATE_BRANCH = 'master';
 const UPDATE_GIT_URL = `https://github.com/${UPDATE_REPO}.git`;
+
+// Update-in-progress mutex. An update freezes the event loop for minutes
+// (execSync git/npm/build) and ends with this process exiting and respawning.
+// While it runs, /api/restart and duplicate /api/update/perform calls are
+// rejected so they can't race the update's own respawn and spawn duplicate
+// servers. Reset only on failure — on success this process exits anyway.
+let updateInProgress = false;
 const UPDATE_RAW_PKG_URL = `https://raw.githubusercontent.com/${UPDATE_REPO}/${UPDATE_BRANCH}/server/package.json`;
 
 function httpsGetJson(url, headers = {}) {
@@ -1433,6 +1457,14 @@ app.get('/api/update/check', async (req, res) => {
 });
 
 app.post('/api/update/perform', async (req, res) => {
+    if (updateInProgress) {
+        return res.status(409).json({ error: 'An update is already in progress.' });
+    }
+    if (process._restarting) {
+        return res.status(409).json({ error: 'The server is restarting. Please try again in a few seconds.' });
+    }
+    updateInProgress = true;
+
     const projectRoot = path.join(__dirname, '..');
     const gitRepo = isGitRepo(projectRoot);
     const NPM_TIMEOUT = 180000; // 3 min per npm install
@@ -1456,6 +1488,7 @@ app.post('/api/update/perform', async (req, res) => {
             execSync('git fetch origin', { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe', timeout: GIT_FETCH_TIMEOUT });
             execSync(`git reset --hard origin/${UPDATE_BRANCH}`, { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe' });
         } else {
+            updateInProgress = false;
             return res.status(400).json({
                 error: `Git is not installed. Please install Git, or download the latest release from https://github.com/${UPDATE_REPO}`
             });
@@ -1499,6 +1532,7 @@ app.post('/api/update/perform', async (req, res) => {
 
         res.json({
             success: true,
+            buildWarning: !buildOk,
             message: buildOk
                 ? 'Update complete. Restarting...'
                 : 'Update complete, but the client rebuild failed - the app will start in slower dev mode. Restarting...'
@@ -1512,11 +1546,21 @@ app.post('/api/update/perform', async (req, res) => {
             releaseServerLock();
             try { fs.unlinkSync(SERVER_LOCK_PATH); } catch {}
             try {
+                // Explicitly scrub OCS_SKIP_CLIENT_SPAWN: if this server was itself
+                // started via /api/restart, inheriting that flag would make the new
+                // server skip spawning a client while the update just killed the old
+                // one — leaving a backend with no UI. OCS_FROM_UPDATE tells the new
+                // server not to open a duplicate browser tab (the existing tab
+                // reloads itself when health polling reconnects).
+                const childEnv = { ...process.env };
+                delete childEnv.OCS_SKIP_CLIENT_SPAWN;
+                childEnv.OCS_FROM_UPDATE = '1';
                 spawn(process.execPath, ['index.js'], {
                     cwd: __dirname,
                     detached: true,
                     stdio: 'ignore',
                     windowsHide: true,
+                    env: childEnv
                 }).unref();
             } catch (err) {
                 console.error('[Update] Failed to spawn new server:', err.message);
@@ -1524,6 +1568,7 @@ app.post('/api/update/perform', async (req, res) => {
             setTimeout(() => process.exit(0), 500);
         }, 1000);
     } catch (err) {
+        updateInProgress = false;
         const details = err.stderr || err.stdout || err.message;
         res.status(500).json({ error: 'Update failed', details: details.slice(-500) });
     }
@@ -6150,7 +6195,10 @@ async function startServer() {
                 // take several minutes on a slow laptop.
                 const frontendUrl = 'http://localhost:1080';
                 const CLIENT_READY_TIMEOUT_MS = 600000;
-                let browserOpened = false;
+                // After an update-driven respawn (OCS_FROM_UPDATE=1) the user's
+                // existing browser tab reloads itself when health polling
+                // reconnects — opening a second tab here would be confusing.
+                let browserOpened = process.env.OCS_FROM_UPDATE === '1';
                 const checkClient = () => {
                     if (browserOpened) return;
                     const http = require('http');

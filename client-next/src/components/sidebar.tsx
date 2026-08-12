@@ -164,7 +164,7 @@ export function Sidebar() {
             );
           })}
           {updateAvailable && (
-            <Link href="/settings" className="block mx-4 mt-3">
+            <Link href="/settings?section=updates" className="block mx-4 mt-3">
               <div
                 className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all hover:scale-[1.02] cursor-pointer"
                 style={{

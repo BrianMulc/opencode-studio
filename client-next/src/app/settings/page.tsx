@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { useTranslations } from "next-intl";
+import { useSearchParams } from "next/navigation";
 import { useApp } from "@/lib/context";
 import api, { getPaths, setConfigPath, getBackup, restoreBackup, getGitHubBackupStatus, backupToGitHub, restoreFromGitHub, setGitHubAutoSync, checkForUpdate, performUpdate, getModelPolicy, saveModelPolicy, validateModelPolicy, type PathsInfo, type BackupData, type UpdateCheckResult, type ModelPolicy as ModelPolicyType, type DelegationViolation, type AgentClassification } from "@/lib/api";
+import { markUpdateInProgress, clearUpdateInProgress } from "@/lib/update-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -51,6 +53,17 @@ const ESSENTIAL_KEYBINDS = [
   ["messages_redo", "Redo"],
 ] as const;
 
+// Reads the ?section= deep-link param (e.g. from the sidebar's "Update
+// Available" badge) and forwards it to the page. Must be wrapped in Suspense:
+// useSearchParams() bails out of static prerendering otherwise.
+function SectionParamHandler({ onSection }: { onSection: (section: string | null) => void }) {
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    onSection(searchParams.get("section"));
+  }, [searchParams, onSection]);
+  return null;
+}
+
 export default function SettingsPage() {
   const t = useTranslations('settings');
   const { config, loading, saveConfig, refreshData } = useApp();
@@ -92,6 +105,20 @@ const [systemPrompt, setSystemPrompt] = useState("");
   const toggleSection = (section: string) => {
     setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
+
+  // Deep-link support: /settings?section=updates (used by the sidebar's
+  // "Update Available" badge) opens that section and scrolls it into view.
+  const handleSectionParam = useCallback((section: string | null) => {
+    if (!section) return;
+    setOpenSections(prev => {
+      if (!(section in prev)) return prev;
+      return { ...prev, [section]: true };
+    });
+    // Wait for the collapsible open animation before scrolling.
+    setTimeout(() => {
+      document.getElementById(`settings-section-${section}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 150);
+  }, []);
 
   useEffect(() => {
     getPaths().then(setPathsInfo).catch(console.error);
@@ -294,12 +321,22 @@ const [systemPrompt, setSystemPrompt] = useState("");
 
   const handlePerformUpdate = async () => {
     setUpdating(true);
+    // Flag the update so the app shell shows a calm "updating" screen during
+    // the expected backend disconnect (server blocks on git/npm/build, then
+    // restarts itself) instead of the "Backend disconnected" landing page.
+    markUpdateInProgress();
     try {
       const result = await performUpdate();
-      toast.success(result.message || t('updates.success'));
+      if (result.buildWarning) {
+        toast.warning(result.message || t('updates.success'));
+      } else {
+        toast.success(result.message || t('updates.success'));
+      }
       // Server auto-restarts after update; client will reconnect via health polling
       // and auto-reload to get fresh JS chunks (handled by AppProvider)
     } catch (err: any) {
+      // Update failed before the server restarted — stop masking disconnects.
+      clearUpdateInProgress();
       const errorData = err.response?.data;
       const errorMsg = errorData?.error ? `${errorData.error}: ${errorData.details || ''}` : err.message;
       toast.error(errorMsg);
@@ -341,6 +378,9 @@ const [systemPrompt, setSystemPrompt] = useState("");
 
   return (
     <div className="space-y-4 animate-fade-in">
+      <Suspense fallback={null}>
+        <SectionParamHandler onSection={handleSectionParam} />
+      </Suspense>
       <PageHelp title={t('pageTitle')} docUrl="https://opencode.ai/docs" docTitle={t('pageDocTitle')} />
 
       <Collapsible open={openSections.general} onOpenChange={() => toggleSection("general")}>
@@ -660,6 +700,7 @@ const [systemPrompt, setSystemPrompt] = useState("");
 
 
 
+      <div id="settings-section-updates" className="scroll-mt-4">
       <Collapsible open={openSections.updates} onOpenChange={() => toggleSection("updates")}>
         <Card className="hover-lift">
           <CollapsibleTrigger asChild>
@@ -768,6 +809,7 @@ const [systemPrompt, setSystemPrompt] = useState("");
           </CollapsibleContent>
         </Card>
       </Collapsible>
+      </div>
 
       <Collapsible open={openSections.modelPolicy} onOpenChange={() => toggleSection("modelPolicy")}>
         <Card className="hover-lift">

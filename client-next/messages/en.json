@@ -1160,6 +1160,11 @@
       "npm": "npm",
       "notConnectingPrefix": "Not connecting? Try:",
       "waiting": "Waiting for backend connection..."
+    },
+    "updating": {
+      "title": "Updating OpenCode Studio",
+      "description": "An update is being installed. The app will restart and reload automatically when finished — this usually takes a few minutes. Please don't close this tab.",
+      "reloadAnyway": "Taking too long? Click to reload"
     }
   }
 }
