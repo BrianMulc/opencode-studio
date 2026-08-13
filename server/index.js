@@ -1386,6 +1386,20 @@ const UPDATE_GIT_URL = `https://github.com/${UPDATE_REPO}.git`;
 // rejected so they can't race the update's own respawn and spawn duplicate
 // servers. Reset only on failure — on success this process exits anyway.
 let updateInProgress = false;
+
+// Update log: written to the user config dir (outside the install dir, so it
+// survives the updater's git clean/reset). Lets us diagnose self-update
+// failures on end-user machines, which otherwise leave no trace.
+const UPDATE_LOG_PATH = path.join(HOME_DIR, '.config', 'opencode-studio', 'update.log');
+function updateLog(msg) {
+    const line = `[${new Date().toISOString()}] ${msg}\n`;
+    try {
+        const dir = path.dirname(UPDATE_LOG_PATH);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.appendFileSync(UPDATE_LOG_PATH, line);
+    } catch {}
+    console.log('[Update]', msg);
+}
 const UPDATE_RAW_PKG_URL = `https://raw.githubusercontent.com/${UPDATE_REPO}/${UPDATE_BRANCH}/server/package.json`;
 
 function httpsGetJson(url, headers = {}) {
@@ -1478,9 +1492,11 @@ app.get('/api/update/check', async (req, res) => {
 
 app.post('/api/update/perform', async (req, res) => {
     if (updateInProgress) {
+        updateLog('rejected: update already in progress');
         return res.status(409).json({ error: 'An update is already in progress.' });
     }
     if (process._restarting) {
+        updateLog('rejected: server is restarting');
         return res.status(409).json({ error: 'The server is restarting. Please try again in a few seconds.' });
     }
     updateInProgress = true;
@@ -1490,15 +1506,19 @@ app.post('/api/update/perform', async (req, res) => {
     const NPM_TIMEOUT = 600000; // 10 min per npm install (cold caches on end-user machines)
     const GIT_FETCH_TIMEOUT = 60000; // 1 min for git fetch
 
+    updateLog(`=== update started (v${SERVER_VERSION}, gitRepo=${gitRepo}, hasGit=${hasGit()}, root=${projectRoot}) ===`);
+
     try {
         if (gitRepo) {
             // Git clone: stash local changes, fetch, reset to remote
+            updateLog('git path: existing repo — stash/clean/fetch/reset');
             try { execSync('git stash', { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe' }); } catch {}
             try { execSync('git clean -fd', { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe' }); } catch {}
             execSync('git fetch origin', { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe', timeout: GIT_FETCH_TIMEOUT });
             execSync(`git reset --hard origin/${UPDATE_BRANCH}`, { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe' });
         } else if (hasGit()) {
             // Non-git install (ZIP/npm): bootstrap a git repo and sync
+            updateLog('git path: bootstrap git init + fetch + reset');
             execSync('git init', { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe' });
             try {
                 execSync(`git remote add origin ${UPDATE_GIT_URL}`, { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe' });
@@ -1508,11 +1528,13 @@ app.post('/api/update/perform', async (req, res) => {
             execSync('git fetch origin', { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe', timeout: GIT_FETCH_TIMEOUT });
             execSync(`git reset --hard origin/${UPDATE_BRANCH}`, { cwd: projectRoot, encoding: 'utf8', stdio: 'pipe' });
         } else {
+            updateLog('aborting: git not found');
             updateInProgress = false;
             return res.status(400).json({
                 error: `Git is not installed. Please install Git, or download the latest release from https://github.com/${UPDATE_REPO}`
             });
         }
+        updateLog('git sync complete');
 
         // Kill the client BEFORE installing dependencies: the running Next.js
         // process holds Windows file locks on native binaries inside
@@ -1540,21 +1562,28 @@ app.post('/api/update/perform', async (req, res) => {
         // server/ and client-next/, which would duplicate the explicit installs
         // below (doubling update time and timeout exposure).
         runNpmInstall(projectRoot, '--ignore-scripts');
+        updateLog('root deps installed');
         runNpmInstall(path.join(projectRoot, 'server'));
+        updateLog('server deps installed');
         runNpmInstall(path.join(projectRoot, 'client-next'));
+        updateLog('client deps installed');
 
         // Rebuild the client so the next start runs the fast production server
         // instead of the dev compiler. If the build fails, clear .next and continue
         // anyway: the launcher then falls back to dev mode (previous behavior).
         let buildOk = false;
         try {
+            updateLog('client build started');
             execSync('npm run build', { cwd: path.join(projectRoot, 'client-next'), encoding: 'utf8', stdio: 'pipe', timeout: 900000 });
             buildOk = true;
+            updateLog('client build succeeded');
         } catch (buildErr) {
+            updateLog('client build FAILED: ' + buildErr.message);
             console.error('[Update] Client build failed, falling back to dev mode:', buildErr.message);
             try { fs.rmSync(path.join(projectRoot, 'client-next', '.next'), { recursive: true, force: true }); } catch {}
         }
 
+        updateLog(`update complete (buildOk=${buildOk}) — respawning`);
         res.json({
             success: true,
             buildWarning: !buildOk,
@@ -1595,6 +1624,7 @@ app.post('/api/update/perform', async (req, res) => {
     } catch (err) {
         updateInProgress = false;
         const details = err.stderr || err.stdout || err.message;
+        updateLog('UPDATE FAILED: ' + String(details).slice(-800));
         res.status(500).json({ error: 'Update failed', details: details.slice(-500) });
     }
 });
