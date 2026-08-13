@@ -1534,6 +1534,14 @@ app.post('/api/update/perform', async (req, res) => {
 
     updateLog(`=== update started (v${SERVER_VERSION}, gitRepo=${gitRepo}, hasGit=${hasGit()}, root=${projectRoot}) ===`);
 
+    // Capture lockfile hashes BEFORE git reset changes them, so we can skip
+    // npm ci for directories whose dependencies didn't actually change.
+    const lockHashesBefore = {};
+    for (const rel of ['package-lock.json', 'server/package-lock.json', 'client-next/package-lock.json']) {
+        const p = path.join(projectRoot, rel);
+        lockHashesBefore[rel] = fs.existsSync(p) ? crypto.createHash('sha1').update(fs.readFileSync(p)).digest('hex') : null;
+    }
+
     try {
         if (gitRepo) {
             // Git clone: stash local changes, fetch, reset to remote
@@ -1570,29 +1578,48 @@ app.post('/api/update/perform', async (req, res) => {
         // (health polling sees the server busy), reconnecting after respawn.
         try { if (clientProcess) clientProcess.kill('SIGTERM'); } catch {}
 
-        // Install dependencies — try npm ci (faster, reproducible) first, fall back to npm install
-        function runNpmInstall(cwd, extraArgs = '') {
-            const hasLock = fs.existsSync(path.join(cwd, 'package-lock.json'));
+        // Kill the client BEFORE installing dependencies: the running Next.js
+        // process holds Windows file locks on native binaries inside
+        // client-next\node_modules (e.g. @next/swc), and npm ci deletes and
+        // recreates that directory — doing it while the client is up fails with
+        // EPERM/EBUSY. The browser page stays alive and shows the Updating screen
+        // (health polling sees the server busy), reconnecting after respawn.
+        try { if (clientProcess) clientProcess.kill('SIGTERM'); } catch {}
+
+        function runNpmInstall(cwd, relLock, extraArgs = '') {
+            const dirName = path.relative(projectRoot, cwd) || 'root';
+            // Skip if the lockfile is unchanged AND node_modules is present
+            const lockNow = fs.existsSync(path.join(cwd, relLock))
+                ? crypto.createHash('sha1').update(fs.readFileSync(path.join(cwd, relLock))).digest('hex')
+                : null;
+            const nmPresent = fs.existsSync(path.join(cwd, 'node_modules'));
+            if (lockNow && lockNow === lockHashesBefore[relLock] && nmPresent) {
+                updateLog(`${dirName}: lockfile unchanged — skipping npm ci (deps already current)`);
+                return;
+            }
+            const hasLock = lockNow !== null;
             if (hasLock) {
                 try {
+                    updateLog(`${dirName}: npm ci...`);
                     execSync(`npm ci ${extraArgs}`.trim(), { cwd, encoding: 'utf8', stdio: 'pipe', timeout: NPM_TIMEOUT });
                     return;
                 } catch (ciErr) {
-                    console.log('[Update] npm ci failed in ' + cwd + ', falling back to npm install: ' + ciErr.message);
+                    updateLog(`${dirName}: npm ci failed, falling back to npm install: ${ciErr.message}`);
                 }
             }
+            updateLog(`${dirName}: npm install...`);
             execSync(`npm install ${extraArgs}`.trim(), { cwd, encoding: 'utf8', stdio: 'pipe', timeout: NPM_TIMEOUT });
         }
 
         // Root uses --ignore-scripts: its postinstall re-runs full installs in
         // server/ and client-next/, which would duplicate the explicit installs
         // below (doubling update time and timeout exposure).
-        runNpmInstall(projectRoot, '--ignore-scripts');
-        updateLog('root deps installed');
-        runNpmInstall(path.join(projectRoot, 'server'));
-        updateLog('server deps installed');
-        runNpmInstall(path.join(projectRoot, 'client-next'));
-        updateLog('client deps installed');
+        runNpmInstall(projectRoot, 'package-lock.json', '--ignore-scripts');
+        updateLog('root deps done');
+        runNpmInstall(path.join(projectRoot, 'server'), 'server/package-lock.json');
+        updateLog('server deps done');
+        runNpmInstall(path.join(projectRoot, 'client-next'), 'client-next/package-lock.json');
+        updateLog('client deps done');
 
         // Rebuild the client so the next start runs the fast production server
         // instead of the dev compiler. If the build fails, clear .next and continue
@@ -1641,9 +1668,15 @@ app.post('/api/update/perform', async (req, res) => {
         }, 1000);
     } catch (err) {
         updateInProgress = false;
-        const details = err.stderr || err.stdout || err.message;
+        // Turn useless spawn errors into actionable messages
+        let details = err.stderr || err.stdout || err.message;
+        if (err.code === 'ETIMEDOUT' || /ETIMEDOUT/.test(String(err.message))) {
+            details = 'A step timed out (likely a slow network during npm install or the client build). Check your connection and try again.';
+        } else if (/EPERM|EBUSY/.test(String(details))) {
+            details = 'A file was locked by another process. Close any other OpenCode Studio windows and try again.';
+        }
         updateLog('UPDATE FAILED: ' + String(details).slice(-800));
-        res.status(500).json({ error: 'Update failed', details: details.slice(-500) });
+        res.status(500).json({ error: 'Update failed', details: String(details).slice(-500) });
     }
 });
 
