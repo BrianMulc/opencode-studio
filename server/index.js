@@ -1313,6 +1313,35 @@ app.post('/api/shutdown', (req, res) => {
     setTimeout(() => process.exit(0), 100);
 });
 
+// Shared respawn helper: spawns a fresh server process that waits for THIS
+// process to fully exit before binding (eliminates the port/lock race where
+// the child starts while the parent still holds the port). Child output goes
+// to server-boot.log so a crash-on-boot is diagnosable instead of silent.
+function spawnReplacementServer(extraEnv = {}) {
+    // A server that was itself respawned must not propagate an inherited skip
+    // flag — the update path kills the old client, so the new server must
+    // spawn one. extraEnv is applied AFTER the scrub so callers can
+    // deliberately set it (the /api/restart path).
+    const childEnv = { ...process.env };
+    delete childEnv.OCS_SKIP_CLIENT_SPAWN;
+    Object.assign(childEnv, extraEnv);
+    childEnv.OCS_WAIT_FOR_PID = String(process.pid);
+
+    let childStdio = 'ignore';
+    try {
+        const bootLogFd = fs.openSync(BOOT_LOG_PATH, 'a');
+        childStdio = ['ignore', bootLogFd, bootLog];
+    } catch {}
+
+    spawn(process.execPath, ['index.js'], {
+        cwd: __dirname,
+        detached: true,
+        stdio: childStdio,
+        windowsHide: true,
+        env: childEnv
+    }).unref();
+}
+
 // Restart: spawn a new server process then exit this one.
 // Pass OCS_SKIP_CLIENT_SPAWN=1 so the new server doesn't spawn another client
 // (the client is already running from the previous server instance).
@@ -1330,13 +1359,7 @@ app.post('/api/restart', (req, res) => {
     try { fs.unlinkSync(SERVER_LOCK_PATH); } catch {}
     setTimeout(() => {
         try {
-            spawn(process.execPath, ['index.js'], {
-                cwd: __dirname,
-                detached: true,
-                stdio: 'ignore',
-                windowsHide: true,
-                env: { ...process.env, OCS_SKIP_CLIENT_SPAWN: '1' }
-            }).unref();
+            spawnReplacementServer({ OCS_SKIP_CLIENT_SPAWN: '1' });
         } catch (err) {
             console.error('[Restart] Failed to spawn new server:', err.message);
         }
@@ -1391,6 +1414,9 @@ let updateInProgress = false;
 // survives the updater's git clean/reset). Lets us diagnose self-update
 // failures on end-user machines, which otherwise leave no trace.
 const UPDATE_LOG_PATH = path.join(HOME_DIR, '.config', 'opencode-studio', 'update.log');
+// Where the respawned server's boot output goes (respawn uses detached stdio
+// to a file instead of 'ignore', so a crash-on-boot is diagnosable).
+const BOOT_LOG_PATH = path.join(HOME_DIR, '.config', 'opencode-studio', 'server-boot.log');
 function updateLog(msg) {
     const line = `[${new Date().toISOString()}] ${msg}\n`;
     try {
@@ -1600,23 +1626,15 @@ app.post('/api/update/perform', async (req, res) => {
             releaseServerLock();
             try { fs.unlinkSync(SERVER_LOCK_PATH); } catch {}
             try {
-                // Explicitly scrub OCS_SKIP_CLIENT_SPAWN: if this server was itself
-                // started via /api/restart, inheriting that flag would make the new
-                // server skip spawning a client while the update just killed the old
-                // one — leaving a backend with no UI. OCS_FROM_UPDATE tells the new
-                // server not to open a duplicate browser tab (the existing tab
-                // reloads itself when health polling reconnects).
-                const childEnv = { ...process.env };
-                delete childEnv.OCS_SKIP_CLIENT_SPAWN;
-                childEnv.OCS_FROM_UPDATE = '1';
-                spawn(process.execPath, ['index.js'], {
-                    cwd: __dirname,
-                    detached: true,
-                    stdio: 'ignore',
-                    windowsHide: true,
-                    env: childEnv
-                }).unref();
+                // OCS_FROM_UPDATE tells the new server not to open a duplicate
+                // browser tab (the existing tab reloads itself when health
+                // polling reconnects). OCS_WAIT_FOR_PID (set inside
+                // spawnReplacementServer) makes the child wait for this process
+                // to exit before binding, eliminating the port race.
+                spawnReplacementServer({ OCS_FROM_UPDATE: '1' });
+                updateLog('respawned new server, old server exiting');
             } catch (err) {
+                updateLog('failed to spawn new server: ' + err.message);
                 console.error('[Update] Failed to spawn new server:', err.message);
             }
             setTimeout(() => process.exit(0), 500);
@@ -6676,6 +6694,16 @@ app.post('/api/presets/:id/apply', (req, res) => {
 
 // Start watcher on server start
 async function startServer() {
+    // If we were spawned by an update/restart respawn, wait for the parent to
+    // fully exit first so we don't race it for the port and lock file.
+    const waitForPid = parseInt(process.env.OCS_WAIT_FOR_PID || '', 10);
+    if (Number.isInteger(waitForPid) && waitForPid > 0 && waitForPid !== process.pid) {
+        const waitStart = Date.now();
+        while (isProcessRunning(waitForPid) && Date.now() - waitStart < 30000) {
+            await new Promise(r => setTimeout(r, 250));
+        }
+    }
+
     if (!ensureSingleServerInstance()) {
         process.exit(1);
     }
