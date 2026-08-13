@@ -1487,7 +1487,7 @@ app.post('/api/update/perform', async (req, res) => {
 
     const projectRoot = path.join(__dirname, '..');
     const gitRepo = isGitRepo(projectRoot);
-    const NPM_TIMEOUT = 180000; // 3 min per npm install
+    const NPM_TIMEOUT = 600000; // 10 min per npm install (cold caches on end-user machines)
     const GIT_FETCH_TIMEOUT = 60000; // 1 min for git fetch
 
     try {
@@ -1514,29 +1514,34 @@ app.post('/api/update/perform', async (req, res) => {
             });
         }
 
+        // Kill the client BEFORE installing dependencies: the running Next.js
+        // process holds Windows file locks on native binaries inside
+        // client-next\node_modules (e.g. @next/swc), and npm ci deletes and
+        // recreates that directory — doing it while the client is up fails with
+        // EPERM/EBUSY. The browser page stays alive and shows the Updating screen
+        // (health polling sees the server busy), reconnecting after respawn.
+        try { if (clientProcess) clientProcess.kill('SIGTERM'); } catch {}
+
         // Install dependencies — try npm ci (faster, reproducible) first, fall back to npm install
-        function runNpmInstall(cwd) {
+        function runNpmInstall(cwd, extraArgs = '') {
             const hasLock = fs.existsSync(path.join(cwd, 'package-lock.json'));
             if (hasLock) {
                 try {
-                    execSync('npm ci', { cwd, encoding: 'utf8', stdio: 'pipe', timeout: NPM_TIMEOUT });
+                    execSync(`npm ci ${extraArgs}`.trim(), { cwd, encoding: 'utf8', stdio: 'pipe', timeout: NPM_TIMEOUT });
                     return;
                 } catch (ciErr) {
                     console.log('[Update] npm ci failed in ' + cwd + ', falling back to npm install: ' + ciErr.message);
                 }
             }
-            execSync('npm install', { cwd, encoding: 'utf8', stdio: 'pipe', timeout: NPM_TIMEOUT });
+            execSync(`npm install ${extraArgs}`.trim(), { cwd, encoding: 'utf8', stdio: 'pipe', timeout: NPM_TIMEOUT });
         }
 
-        runNpmInstall(projectRoot);
+        // Root uses --ignore-scripts: its postinstall re-runs full installs in
+        // server/ and client-next/, which would duplicate the explicit installs
+        // below (doubling update time and timeout exposure).
+        runNpmInstall(projectRoot, '--ignore-scripts');
         runNpmInstall(path.join(projectRoot, 'server'));
         runNpmInstall(path.join(projectRoot, 'client-next'));
-
-        // Kill the client before rebuilding: a running Next.js server (especially
-        // in dev mode) actively uses .next and can break the build via locked or
-        // mismatched files. The browser page stays alive and reconnects via health
-        // polling once the new server is up.
-        try { if (clientProcess) clientProcess.kill('SIGTERM'); } catch {}
 
         // Rebuild the client so the next start runs the fast production server
         // instead of the dev compiler. If the build fails, clear .next and continue

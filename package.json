@@ -1,6 +1,6 @@
 {
   "name": "opencode-studio-server",
-  "version": "2.9.2",
+  "version": "2.9.3",
   "private": false,
   "scripts": {
     "start": "npm run server",
