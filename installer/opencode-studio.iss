@@ -11,6 +11,7 @@
 ; Build expects a staged layout (see .github/workflows/build-installer.yml):
 ;   repo root        = app source with node_modules + client-next/.next built
 ;   installer\runtime\nodejs = portable Node.js (node.exe, npm.cmd, ...)
+;   installer\runtime\mingit = portable MinGit (cmd\git.exe, ...)
 ;
 ; Compile:  iscc /DAppVersion=2.9.1 installer\opencode-studio.iss
 ; ==========================================================================
@@ -64,6 +65,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Source: "..\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion; Excludes: "\.git,\.github,.changeset,installer,installer\*,*.err,*.log,\.sisyphus,\.omo,vendor,server\launcher.vbs,client-next\.next\cache,client-next\.next\cache\*,node_modules\.cache,client-next\node_modules\.cache,client-next\node_modules\.cache\*"
 ; --- Portable Node.js runtime ---
 Source: "runtime\nodejs\*"; DestDir: "{app}\runtime\nodejs"; Flags: recursesubdirs createallsubdirs ignoreversion
+; --- Portable MinGit runtime (makes in-app self-updates work without system Git) ---
+Source: "runtime\mingit\*"; DestDir: "{app}\runtime\mingit"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
 Name: "{autodesktop}\OpenCode Studio"; Filename: "wscript.exe"; Parameters: """{app}\OpenCode-Studio.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\logo-dark.ico"; Comment: "Launch OpenCode Studio"

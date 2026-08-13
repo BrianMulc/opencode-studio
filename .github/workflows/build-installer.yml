@@ -71,6 +71,21 @@ jobs:
           Copy-Item -Recurse -Force "$env:TEMP\node-runtime\node-v$v-win-x64\*" 'installer\runtime\nodejs\'
           & 'installer\runtime\nodejs\node.exe' -v
 
+      - name: Download portable MinGit runtime (latest release)
+        shell: pwsh
+        run: |
+          $rel = Invoke-RestMethod -Uri 'https://api.github.com/repos/git-for-windows/git/releases/latest' -Headers @{ 'User-Agent' = 'opencode-studio-ci' }
+          $asset = $rel.assets | Where-Object { $_.name -match '^MinGit-.*-64-bit\.zip$' } | Select-Object -First 1
+          if (-not $asset) { Write-Error 'MinGit 64-bit asset not found in latest git-for-windows release'; exit 1 }
+          Write-Host "Downloading $($asset.name) from $($rel.tag_name)"
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "$env:TEMP\mingit.zip"
+          New-Item -ItemType Directory -Path 'installer\runtime\mingit' -Force | Out-Null
+          # NOTE: Expand-Archive cannot handle MinGit's zip (symlink entries);
+          # bsdtar (tar.exe, present on Windows runners) handles it correctly.
+          tar -xf "$env:TEMP\mingit.zip" -C 'installer\runtime\mingit'
+          if ($LASTEXITCODE -ne 0) { Write-Error "tar extraction failed: $LASTEXITCODE"; exit $LASTEXITCODE }
+          & '.\installer\runtime\mingit\cmd\git.exe' --version
+
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup -y --no-progress

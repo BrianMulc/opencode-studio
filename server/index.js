@@ -9,6 +9,26 @@ let DatabaseSync;
 try { ({ DatabaseSync } = require('node:sqlite')); } catch {}
 const { spawn, exec: _exec, execSync: _execSync } = require('child_process');
 
+// Prefer bundled portable runtimes (Inno installer layout: <app>/runtime/...).
+// Runs at module load so EVERY entry path (vbs launcher, opencodestudio://
+// protocol via cli.js, manual start) gets git/npm on PATH for child processes
+// without requiring system-wide installs.
+(function ensureBundledRuntimesOnPath() {
+    try {
+        const runtimeDir = path.join(__dirname, '..', 'runtime');
+        const candidates = [
+            path.join(runtimeDir, 'mingit', 'cmd'),   // git.exe
+            path.join(runtimeDir, 'nodejs'),          // node.exe, npm.cmd
+        ];
+        const pathKey = Object.keys(process.env).find(k => k.toLowerCase() === 'path') || 'PATH';
+        for (const dir of candidates) {
+            if (fs.existsSync(dir) && !process.env[pathKey].toLowerCase().includes(dir.toLowerCase())) {
+                process.env[pathKey] = dir + path.delimiter + process.env[pathKey];
+            }
+        }
+    } catch {}
+})();
+
 // Wrappers that always hide console windows on Windows to prevent terminal flashing.
 function exec(cmd, opts, cb) {
     if (typeof opts === 'function') { cb = opts; opts = {}; }
