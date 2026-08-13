@@ -14,7 +14,7 @@ OpenCode Studio ≥2.8.1 has "linked profiles":
 
 - Two built-in presets, each pointing at a canonical URL on the battlemage server:
   - **Public data only** → `https://battlemage.tail06281.ts.net/opencode-studio/public.json`
-  - **Confidential data only** → `https://battlemage.tail06281.ts.net/opencode-studio/confidential.json`
+  - **All data (private AI)** → `https://battlemage.tail06281.ts.net/opencode-studio/private.json`
 - Creating a profile from a preset fetches the URL **immediately** and writes the
   result as that profile's `opencode.json`. The profile remembers its source URL
   in a marker file (`<profile>/.ocs-linked-source.json`).
@@ -42,7 +42,7 @@ Two `GET` endpoints returning JSON:
 
 ```
 GET https://battlemage.tail06281.ts.net/opencode-studio/public.json
-GET https://battlemage.tail06281.ts.net/opencode-studio/confidential.json
+GET https://battlemage.tail06281.ts.net/opencode-studio/private.json
 ```
 
 (If you want different paths, tell the Studio maintainer — the preset URLs are
@@ -96,7 +96,7 @@ rejected with "not a valid opencode config" and the user's file is left untouche
     "battlemage-cpu": { "…": "…" }
   },
 
-  // ONLY in confidential.json — this is the entire difference between the two:
+  // ONLY in private.json — this is the entire difference between the two:
   "enabled_providers": ["battlemage", "battlemage-cpu"]
 }
 ```
@@ -106,14 +106,14 @@ Rules:
   `reasoning`, …) lives here; this is the curated catalog Studio cannot infer
   from the OpenAI-compatible `/v1/models` endpoint.
 - **Never** include `apiKey` (or any secret) in the served files.
-- `enabled_providers` — omit from `public.json`; include in `confidential.json`.
+- `enabled_providers` — omit from `public.json`; include in `private.json`.
 - Any other valid opencode.json top-level keys are allowed and will be synced
   (e.g. a recommended default `model`).
 
 ## 4. Daily workflow after this ships
 
 1. Add/optimize a model on battlemage (as today).
-2. Edit `public.json` + `confidential.json` (or regenerate them — see §6).
+2. Edit `public.json` + `private.json` (or regenerate them — see §6).
 3. Done. Users get it on next app start (toast: "Model catalog updated"), or
    immediately via the profile's **Sync** button. No repo commits, no app
    update, no copy-paste, no version bump.
@@ -127,7 +127,7 @@ Any of these works — pick what matches your stack.
 **nginx (static files):**
 ```nginx
 location /opencode-studio/ {
-    alias /srv/battlemage/opencode-studio/;   # public.json, confidential.json
+    alias /srv/battlemage/opencode-studio/;   # public.json, private.json
     add_header Cache-Control "no-cache";
     default_type application/json;
 }
@@ -174,7 +174,7 @@ base = {
 
 out = "/srv/battlemage/opencode-studio"
 write_atomic(f"{out}/public.json", base)        # write temp file, os.replace()
-write_atomic(f"{out}/confidential.json",
+write_atomic(f"{out}/private.json",
              {**base, "enabled_providers": ["battlemage", "battlemage-cpu"]})
 ```
 
@@ -185,7 +185,7 @@ but atomic writes remove the failure mode entirely.)
 ## 7. Acceptance checklist (server side)
 
 - [ ] `curl -sf https://battlemage.tail06281.ts.net/opencode-studio/public.json | jq -e '.provider | keys | length > 0'` → `true`
-- [ ] Same for `confidential.json`, plus `jq -e '.enabled_providers | index("battlemage")'` → matches
+- [ ] Same for `private.json`, plus `jq -e '.enabled_providers | index("battlemage")'` → matches
 - [ ] Neither file contains `apiKey`: `grep -c apiKey *.json` → `0`
 - [ ] `Cache-Control` header present (no long-lived caching)
 - [ ] Reachable from a *different* tailnet node than the server (ACL check)

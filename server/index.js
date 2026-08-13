@@ -5460,12 +5460,12 @@ const BUILTIN_PROFILE_PRESETS = [
         configUrl: 'https://battlemage.tail06281.ts.net/opencode-studio/public.json'
     },
     {
-        id: 'builtin-confidential-data-only',
-        name: 'Confidential data only',
-        description: 'Locks OpenCode to the private Battlemage infrastructure only (via enabled_providers) for sensitive work. Model catalog stays up to date automatically.',
-        suggestedName: 'confidential-data-only',
+        id: 'builtin-private-all-data',
+        name: 'All data (private AI)',
+        description: 'Routes everything through your local private Battlemage infrastructure (via enabled_providers). Safe for confidential AND public data. Model catalog stays up to date automatically.',
+        suggestedName: 'private-all-data',
         builtin: true,
-        configUrl: 'https://battlemage.tail06281.ts.net/opencode-studio/confidential.json'
+        configUrl: 'https://battlemage.tail06281.ts.net/opencode-studio/private.json'
     }
 ];
 
@@ -5474,8 +5474,9 @@ app.get('/api/profile-presets', (req, res) => {
 });
 
 // --- Linked profile sync ---
-// Fetch the canonical config for a linked profile, merge it with the local one
-// (remote wins on managed providers, local apiKey preserved), and write it.
+// Fetch the canonical config for a linked profile and layer it under the
+// user's local overrides (catalog updates flow; local edits and apiKeys are
+// never reverted), then write the merged config.
 function httpsGetBuffer(url) {
     // Support both https (production tailnet) and http (local/LAN catalogs)
     const mod = url.startsWith('http:') ? require('http') : require('https');
