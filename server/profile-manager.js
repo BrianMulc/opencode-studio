@@ -112,6 +112,82 @@ function createProfile(name) {
     return { success: true };
 }
 
+// Create a profile pre-seeded with a given opencode.json object (used by
+// profile presets). The config is written atomically next to the profile dir.
+function createProfileWithConfig(name, configObject) {
+    const validation = validateProfileName(name);
+    if (!validation.valid) {
+        throw new Error(validation.error);
+    }
+    const trimmed = name.trim();
+    const dir = path.join(PROFILES_DIR, trimmed);
+    fs.mkdirSync(dir, { recursive: true });
+    const configPath = path.join(dir, 'opencode.json');
+    const tmpPath = configPath + '.tmp';
+    fs.writeFileSync(tmpPath, JSON.stringify(configObject, null, 2), 'utf8');
+    fs.renameSync(tmpPath, configPath);
+    return { success: true, name: trimmed };
+}
+
+// --- Linked profile sources ---
+// Profiles created from a linked preset remember their source URL in a marker
+// file, so the catalog can be re-synced later (auto-sync on start / "Sync now").
+const LINKED_SOURCE_FILE = '.ocs-linked-source.json';
+
+function writeLinkedSource(name, source) {
+    const dir = path.join(PROFILES_DIR, name);
+    if (!fs.existsSync(dir)) throw new Error('Profile not found');
+    const markerPath = path.join(dir, LINKED_SOURCE_FILE);
+    const tmpPath = `${markerPath}.${Date.now()}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify({ ...source, linkedAt: Date.now() }, null, 2), 'utf8');
+    // Windows rename cannot overwrite an existing destination — remove first.
+    try { if (fs.existsSync(markerPath)) fs.unlinkSync(markerPath); } catch {}
+    fs.renameSync(tmpPath, markerPath);
+}
+
+function readLinkedSource(name) {
+    try {
+        const markerPath = path.join(PROFILES_DIR, name, LINKED_SOURCE_FILE);
+        if (!fs.existsSync(markerPath)) return null;
+        return JSON.parse(fs.readFileSync(markerPath, 'utf8'));
+    } catch {
+        return null;
+    }
+}
+
+function getLinkedProfiles() {
+    const { profiles } = listProfiles();
+    const linked = {};
+    for (const name of profiles) {
+        const source = readLinkedSource(name);
+        if (source && source.configUrl) {
+            linked[name] = {
+                configUrl: source.configUrl,
+                presetName: source.presetName || null,
+                linkedAt: source.linkedAt || null,
+                lastSyncedAt: source.lastSyncedAt || null,
+                lastSyncStatus: source.lastSyncStatus || null,
+                lastSyncError: source.lastSyncError || null
+            };
+        }
+    }
+    return linked;
+}
+
+function markSynced(name, result) {
+    const source = readLinkedSource(name);
+    if (!source) return;
+    writeLinkedSource(name, { ...source, ...result });
+}
+
+// Paths used by the linked-profile sync in index.js
+function getProfileDir(name) {
+    return path.join(PROFILES_DIR, name);
+}
+function getLinkedSourceFileName() {
+    return LINKED_SOURCE_FILE;
+}
+
 function deleteProfile(name) {
     const { active } = listProfiles();
     if (name === active) throw new Error('Cannot delete active profile');
@@ -203,9 +279,16 @@ function renameProfile(oldName, newName) {
 module.exports = {
     listProfiles,
     createProfile,
+    createProfileWithConfig,
     deleteProfile,
     activateProfile,
     validateProfileName,
     duplicateProfile,
-    renameProfile
+    renameProfile,
+    writeLinkedSource,
+    readLinkedSource,
+    getLinkedProfiles,
+    markSynced,
+    getProfileDir,
+    getLinkedSourceFileName
 };

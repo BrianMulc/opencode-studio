@@ -5443,6 +5443,473 @@ app.put('/api/profiles/:name', (req, res) => {
     }
 });
 
+// --- Profile Presets ---
+// Built-in profile presets are LINKED: instead of shipping a snapshot config,
+// each preset points at a canonical URL hosted on the Battlemage server. The
+// server admin (daily model additions/optimizations) edits one file and every
+// user picks it up via sync — no copy-paste, no app update needed.
+// Presets never carry API keys: users enter their own key in
+// Settings -> Provider API Keys, and sync preserves it.
+const BUILTIN_PROFILE_PRESETS = [
+    {
+        id: 'builtin-public-data-only',
+        name: 'Public data only',
+        description: 'Battlemage providers for non-sensitive work. Other providers remain available to add and enable. Model catalog stays up to date automatically.',
+        suggestedName: 'public-data-only',
+        builtin: true,
+        configUrl: 'https://battlemage.tail06281.ts.net/opencode-studio/public.json'
+    },
+    {
+        id: 'builtin-confidential-data-only',
+        name: 'Confidential data only',
+        description: 'Locks OpenCode to the private Battlemage infrastructure only (via enabled_providers) for sensitive work. Model catalog stays up to date automatically.',
+        suggestedName: 'confidential-data-only',
+        builtin: true,
+        configUrl: 'https://battlemage.tail06281.ts.net/opencode-studio/confidential.json'
+    }
+];
+
+app.get('/api/profile-presets', (req, res) => {
+    res.json({ presets: BUILTIN_PROFILE_PRESETS });
+});
+
+// --- Linked profile sync ---
+// Fetch the canonical config for a linked profile, merge it with the local one
+// (remote wins on managed providers, local apiKey preserved), and write it.
+function httpsGetBuffer(url) {
+    // Support both https (production tailnet) and http (local/LAN catalogs)
+    const mod = url.startsWith('http:') ? require('http') : require('https');
+    return new Promise((resolve, reject) => {
+        const req = mod.get(url, { headers: { 'User-Agent': 'opencode-studio' }, timeout: 10000 }, (resp) => {
+            if (resp.statusCode && resp.statusCode >= 400) {
+                resp.resume();
+                return reject(new Error(`HTTP ${resp.statusCode}`));
+            }
+            const chunks = [];
+            resp.on('data', (c) => chunks.push(c));
+            resp.on('end', () => resolve(Buffer.concat(chunks)));
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('Request timed out')); });
+    });
+}
+
+function validateRemoteConfig(parsed) {
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        && parsed.provider && typeof parsed.provider === 'object' && !Array.isArray(parsed.provider)
+        && Object.keys(parsed.provider).length > 0;
+}
+
+// Strip volatile/auth fields so we can compare catalogs meaningfully.
+function stripVolatile(config) {
+    const clone = JSON.parse(JSON.stringify(config || {}));
+    if (clone.provider && typeof clone.provider === 'object') {
+        for (const p of Object.values(clone.provider)) {
+            if (p && p.options && typeof p.options === 'object') delete p.options.apiKey;
+        }
+    }
+    return clone;
+}
+
+// The catalog-managed "view" of a config: only the providers the catalog
+// manages (union of current remote and last-synced ids, apiKeys stripped) plus
+// enabled_providers. Used for diffing so a user's unrelated edits (model
+// choice, theme, MCP servers, own providers, …) never factor into catalog
+// comparisons.
+function catalogView(config, managedIds) {
+    const view = { provider: {}, enabled_providers: config && config.enabled_providers ? config.enabled_providers : null };
+    if (config && config.provider && typeof config.provider === 'object') {
+        for (const id of managedIds) {
+            const p = config.provider[id];
+            if (p) {
+                const clone = JSON.parse(JSON.stringify(p));
+                if (clone.options && typeof clone.options === 'object') delete clone.options.apiKey;
+                view.provider[id] = clone;
+            }
+        }
+    }
+    return view;
+}
+
+// --- Layered merge: catalog is the baseline, local edits are overrides ---
+//
+//   effective = catalog (updated every sync)  +  local overrides (never touched)
+//
+// Merging is done at MODEL level, not provider level: a user who tweaks one
+// model (or adds their own model to a managed provider) keeps their edit while
+// still receiving catalog updates for every OTHER model. apiKeys and
+// provider-level option edits also survive. Nothing local is ever reverted.
+function mergeRemoteConfig(localConfig, remoteConfig, lastSyncedCatalog) {
+    const managedIds = new Set([
+        ...Object.keys((remoteConfig && remoteConfig.provider) || {}),
+        ...Object.keys((lastSyncedCatalog && lastSyncedCatalog.provider) || {})
+    ]);
+
+    const merged = { ...(localConfig || {}) };
+    const nextProviders = { ...(merged.provider || {}) };
+    let overrideCount = 0;
+
+    for (const id of managedIds) {
+        const localProv = localConfig && localConfig.provider && localConfig.provider[id];
+        const baseProv = lastSyncedCatalog && lastSyncedCatalog.provider && lastSyncedCatalog.provider[id];
+        const remoteProv = remoteConfig.provider && remoteConfig.provider[id];
+
+        if (!remoteProv) {
+            // Provider removed from catalog upstream.
+            // Keep it only if the user edited it (made it their own).
+            const userEdited = localProv && baseProv
+                && JSON.stringify(stripVolatile(localProv)) !== JSON.stringify(stripVolatile(baseProv));
+            if (!userEdited) {
+                delete nextProviders[id];
+                if (localProv) overrideCount++; // user had no edits but provider removed → still counts as a "change" but not an override; don't count
+            } else {
+                // keep local copy as user's own; already in nextProviders
+            }
+            continue;
+        }
+
+        // Provider exists in remote: start from the fresh catalog version
+        const next = JSON.parse(JSON.stringify(remoteProv));
+        const localModels = (localProv && localProv.models) || {};
+        const baseModels = (baseProv && baseProv.models) || {};
+        const remoteModels = (remoteProv && remoteProv.models) || {};
+        const nextModels = { ...(next.models || {}) };
+
+        // Model-level merge: for every model the user has, decide per-model.
+        const allModelIds = new Set([...Object.keys(localModels), ...Object.keys(remoteModels)]);
+        for (const modelId of allModelIds) {
+            const localM = localModels[modelId];
+            const baseM = baseModels[modelId];
+            const remoteM = remoteModels[modelId];
+
+            if (!localM) {
+                // User doesn't have this model — catalog version already in nextModels; nothing to do
+                continue;
+            }
+            if (!remoteM) {
+                // Removed from catalog. Keep the user's copy if they edited it, else drop.
+                const userEditedModel = !baseM || JSON.stringify(stripVolatile(localM)) !== JSON.stringify(stripVolatile(baseM));
+                if (userEditedModel) {
+                    nextModels[modelId] = localM; // keep user's version
+                    overrideCount++;
+                } else {
+                    delete nextModels[modelId]; // untouched by user → follow catalog removal
+                }
+                continue;
+            }
+            // Both local and remote have the model: if the user edited it, keep theirs; else take remote's.
+            const userEditedModel = baseM
+                ? JSON.stringify(stripVolatile(localM)) !== JSON.stringify(stripVolatile(baseM))
+                : true; // no baseline → treat as user-added
+            if (userEditedModel) {
+                nextModels[modelId] = localM; // preserve user's edit/addition
+                overrideCount++;
+            } else {
+                nextModels[modelId] = remoteM; // catalog update flows through
+            }
+        }
+
+        // Provider-level options (timeout, chunkTimeout, baseURL, etc.):
+        // remote wins, except the user's apiKey and any option keys the user changed.
+        const localOpts = (localProv && localProv.options) || {};
+        const baseOpts = (baseProv && baseProv.options) || {};
+        const remoteOpts = (remoteProv && remoteProv.options) || {};
+        const nextOpts = { ...remoteOpts };
+        for (const [k, v] of Object.entries(localOpts)) {
+            if (k === 'apiKey') { nextOpts.apiKey = v; continue; }
+            const baseV = baseOpts[k];
+            if (JSON.stringify(v) !== JSON.stringify(baseV)) {
+                nextOpts[k] = v; // user overrode this option
+                overrideCount++;
+            }
+        }
+        next.options = nextOpts;
+        next.models = nextModels;
+        nextProviders[id] = next;
+    }
+
+    merged.provider = nextProviders;
+
+    // enabled_providers: catalog-managed, but respect a local override.
+    const localEnabled = localConfig && localConfig.enabled_providers;
+    const baseEnabled = lastSyncedCatalog && lastSyncedCatalog.enabled_providers;
+    const localEditedEnabled = localEnabled !== undefined
+        && JSON.stringify(localEnabled) !== JSON.stringify(baseEnabled !== undefined ? baseEnabled : null);
+    if (localEditedEnabled) {
+        merged.enabled_providers = localEnabled;
+    } else if (remoteConfig.enabled_providers) {
+        merged.enabled_providers = remoteConfig.enabled_providers;
+    } else {
+        delete merged.enabled_providers;
+    }
+
+    return { merged, overrides: { count: overrideCount } };
+}
+
+// Performs one sync pass for a linked profile.
+//
+// Merge semantics (layered, catalog = baseline, local edits = overrides):
+//   - The catalog layer is updated from the remote URL every sync.
+//   - A local edit to a managed provider is NEVER reverted; it's preserved as
+//     an override on top of the fresh catalog. Both sides update independently.
+//   - apiKeys always survive. Unmanaged providers, MCP servers, and all other
+//     top-level settings always survive.
+//   - force=true (used by "Reset to catalog") drops all overrides and writes
+//     the pure catalog + the user's apiKeys.
+async function performLinkedSync(profileName, source, { force = false } = {}) {
+    const profileDir = profileManager.getProfileDir(profileName);
+    const configPath = path.join(profileDir, 'opencode.json');
+
+    let remoteConfig;
+    try {
+        const buf = await httpsGetBuffer(source.configUrl);
+        remoteConfig = JSON.parse(buf.toString('utf8'));
+    } catch (err) {
+        const result = { lastSyncedAt: Date.now(), lastSyncStatus: 'error', lastSyncError: `Failed to fetch catalog: ${err.message}` };
+        profileManager.markSynced(profileName, result);
+        return { changed: false, error: result.lastSyncError, ...result };
+    }
+
+    if (!validateRemoteConfig(remoteConfig)) {
+        const result = { lastSyncedAt: Date.now(), lastSyncStatus: 'error', lastSyncError: 'Remote catalog is not a valid opencode config (missing provider block)' };
+        profileManager.markSynced(profileName, result);
+        return { changed: false, error: result.lastSyncError, ...result };
+    }
+
+    const localRaw = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : null;
+    const localConfig = localRaw ? (() => { try { return JSON.parse(localRaw); } catch { return null; } })() : null;
+
+    const remoteStripped = stripVolatile(remoteConfig);
+    const baseline = source.lastSyncedCatalog || null;
+
+    let merged, overrideCount = 0;
+    if (force) {
+        // Reset to catalog: pure remote + preserved apiKeys + unmanaged content.
+        merged = { ...remoteConfig };
+        if (localConfig && localConfig.provider) {
+            for (const [id, localProv] of Object.entries(localConfig.provider)) {
+                const localKey = localProv && localProv.options && localProv.options.apiKey;
+                if (localKey && merged.provider && merged.provider[id]) {
+                    merged.provider[id] = { ...merged.provider[id] };
+                    merged.provider[id].options = { ...(merged.provider[id].options || {}), apiKey: localKey };
+                }
+            }
+            // Preserve unmanaged providers
+            for (const [id, localProv] of Object.entries(localConfig.provider)) {
+                if (!(remoteConfig.provider && remoteConfig.provider[id])) {
+                    merged.provider[id] = localProv;
+                }
+            }
+        }
+        // Preserve top-level settings the catalog doesn't define
+        if (localConfig) {
+            for (const [key, val] of Object.entries(localConfig)) {
+                if (key !== 'provider' && key !== 'enabled_providers' && !(key in (remoteConfig || {}))) {
+                    merged[key] = val;
+                }
+            }
+        }
+    } else {
+        const result = mergeRemoteConfig(localConfig, remoteConfig, baseline);
+        merged = result.merged;
+        overrideCount = result.overrides.count;
+    }
+
+    const changed = JSON.stringify(merged) !== JSON.stringify(localConfig);
+
+    if (changed || !fs.existsSync(configPath)) {
+        atomicWriteFileSync(configPath, JSON.stringify(merged, null, 2));
+    }
+
+    profileManager.markSynced(profileName, {
+        lastSyncedAt: Date.now(),
+        lastSyncStatus: 'ok',
+        lastSyncError: null,
+        lastSyncedCatalog: remoteStripped,
+        overridesCount: overrideCount
+    });
+    return {
+        changed,
+        conflict: false,
+        overridesPreserved: overrideCount,
+        lastSyncedAt: Date.now()
+    };
+}
+
+app.get('/api/profiles/linked', (req, res) => {
+    res.json({ linked: profileManager.getLinkedProfiles() });
+});
+
+app.post('/api/profiles/:name/sync', async (req, res) => {
+    const name = decodeURIComponent(req.params.name);
+    const source = profileManager.readLinkedSource(name);
+    if (!source || !source.configUrl) {
+        return res.status(404).json({ error: 'Profile is not linked to a remote catalog' });
+    }
+    const force = !!(req.body && req.body.force);
+    try {
+        const result = await performLinkedSync(name, source, { force });
+        if (result.error) return res.status(502).json(result);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// "Reset to catalog": drop all local overrides and write the pure catalog
+// (apiKeys and unmanaged/top-level settings are still preserved). This is the
+// escape hatch for a user who wants to undo their customizations.
+app.post('/api/profiles/:name/reset-to-catalog', async (req, res) => {
+    const name = decodeURIComponent(req.params.name);
+    const source = profileManager.readLinkedSource(name);
+    if (!source || !source.configUrl) {
+        return res.status(404).json({ error: 'Profile is not linked to a remote catalog' });
+    }
+    try {
+        const result = await performLinkedSync(name, source, { force: true });
+        if (result.error) return res.status(502).json(result);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/profiles/sync-all', async (req, res) => {
+    const force = !!(req.body && req.body.force);
+    const linked = profileManager.getLinkedProfiles();
+    const results = {};
+    for (const [name, source] of Object.entries(linked)) {
+        try {
+            results[name] = await performLinkedSync(name, source, { force });
+        } catch (err) {
+            results[name] = { changed: false, error: err.message };
+        }
+    }
+    res.json({ results });
+});
+
+app.post('/api/profiles/:name/unlink', (req, res) => {
+    try {
+        const name = decodeURIComponent(req.params.name);
+        const marker = path.join(profileManager.getProfileDir(name), profileManager.getLinkedSourceFileName());
+        if (fs.existsSync(marker)) fs.unlinkSync(marker);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(400).json({ error: e.message });
+    }
+});
+
+// Create a profile from a linked preset: fetch the canonical config NOW (so the
+// profile is current from the start), write it, and record the source for
+// future syncs. If the catalog is unreachable (off the tailnet), the profile
+// is still created and linked — the first successful sync fills it in.
+app.post('/api/profiles/from-preset', async (req, res) => {
+    try {
+        const { presetId } = req.body || {};
+        const preset = BUILTIN_PROFILE_PRESETS.find(p => p.id === presetId);
+        if (!preset) {
+            return res.status(404).json({ error: 'Preset not found' });
+        }
+
+        let name = (req.body && typeof req.body.name === 'string') ? req.body.name.trim() : '';
+        if (!name) {
+            // Default to the preset's suggested name; suffix if taken (mirrors duplicate)
+            const { profiles } = profileManager.listProfiles();
+            name = preset.suggestedName;
+            let counter = 2;
+            while (profiles.includes(name)) {
+                name = `${preset.suggestedName}-${counter}`;
+                counter++;
+            }
+        }
+
+        // Fetch the catalog before creating anything: if it succeeds the profile
+        // is written with the real config; if it fails we create an empty profile
+        // and still link it, so a later sync completes the setup.
+        let initialConfig = null;
+        let fetchError = null;
+        try {
+            const buf = await httpsGetBuffer(preset.configUrl);
+            const parsed = JSON.parse(buf.toString('utf8'));
+            if (!validateRemoteConfig(parsed)) {
+                fetchError = 'Remote catalog is not a valid opencode config (missing provider block)';
+            } else {
+                initialConfig = parsed;
+            }
+        } catch (err) {
+            fetchError = err.message;
+        }
+
+        profileManager.createProfileWithConfig(name, initialConfig || { "$schema": "https://opencode.ai/config.json" });
+        // Write the link marker directly (markSynced requires an existing marker)
+        profileManager.writeLinkedSource(name, initialConfig ? {
+            configUrl: preset.configUrl,
+            presetName: preset.name,
+            lastSyncedAt: Date.now(),
+            lastSyncStatus: 'ok',
+            lastSyncError: null,
+            lastSyncedCatalog: stripVolatile(initialConfig)
+        } : {
+            configUrl: preset.configUrl,
+            presetName: preset.name,
+            lastSyncedAt: null,
+            lastSyncStatus: 'error',
+            lastSyncError: fetchError || 'Catalog unreachable at creation time'
+        });
+
+        const { profiles, active } = profileManager.listProfiles();
+        res.json({
+            success: true,
+            name,
+            profiles,
+            active,
+            linked: true,
+            catalogFetched: !!initialConfig,
+            ...(fetchError && { warning: `Profile created, but the catalog could not be fetched (${fetchError}). Use Sync on the profile once you're on the tailnet.` })
+        });
+    } catch (e) {
+        res.status(400).json({ error: e.message, ...(e.code && { code: e.code }) });
+    }
+});
+
+// --- Provider API keys ---
+// Sets (or clears, when empty) the apiKey of a provider already present in the
+// ACTIVE opencode.json. Works for any config — preset-created or hand-written —
+// so presets can ship without secrets.
+app.put('/api/providers/:id/apikey', (req, res) => {
+    try {
+        const providerId = decodeURIComponent(req.params.id);
+        const apiKey = (req.body && typeof req.body.apiKey === 'string') ? req.body.apiKey.trim() : null;
+        if (apiKey === null) {
+            return res.status(400).json({ error: 'apiKey is required (use an empty string to clear)' });
+        }
+
+        const config = loadConfig();
+        if (!config) {
+            return res.status(404).json({ error: ERROR_CODES.CONFIG_NOT_FOUND, code: 'CONFIG_NOT_FOUND' });
+        }
+        if (!config.provider || !config.provider[providerId]) {
+            return res.status(404).json({ error: `Provider "${providerId}" not found in the active configuration` });
+        }
+
+        if (!config.provider[providerId].options) {
+            config.provider[providerId].options = {};
+        }
+        if (apiKey === '') {
+            delete config.provider[providerId].options.apiKey;
+        } else {
+            config.provider[providerId].options.apiKey = apiKey;
+        }
+
+        saveConfig(config);
+        triggerGitHubAutoSync();
+        // Never echo the key back — just report whether one is configured now.
+        res.json({ success: true, hasKey: !!config.provider[providerId].options.apiKey });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ============================================
 // END ACCOUNT POOL MANAGEMENT
 // ============================================
@@ -6238,6 +6705,27 @@ async function startServer() {
                 triggerGitHubAutoSync();
             }
         }, 5000);
+
+        // Auto-sync linked profiles once per server start (a few seconds after
+        // boot so it never competes with client startup). Never forced: local
+        // catalog edits + remote change = conflict surfaced to the UI.
+        setTimeout(async () => {
+            const linked = profileManager.getLinkedProfiles();
+            const names = Object.keys(linked);
+            if (names.length === 0) return;
+            console.log(`[LinkedProfiles] Auto-syncing ${names.length} linked profile(s)...`);
+            for (const [name, source] of Object.entries(linked)) {
+                try {
+                    const result = await performLinkedSync(name, source, { force: false });
+                    if (result.conflict) console.log(`[LinkedProfiles] ${name}: conflict (local edits + remote change) — waiting for user choice`);
+                    else if (result.error) console.log(`[LinkedProfiles] ${name}: sync failed — ${result.error}`);
+                    else if (result.changed) console.log(`[LinkedProfiles] ${name}: catalog updated`);
+                    else console.log(`[LinkedProfiles] ${name}: up to date`);
+                } catch (err) {
+                    console.error(`[LinkedProfiles] ${name}: sync error — ${err.message}`);
+                }
+            }
+        }, 8000);
     });
 }
 

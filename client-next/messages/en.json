@@ -185,6 +185,12 @@
       "description": "This will shut down the backend server. You'll need to relaunch it to make changes to your OpenCode configuration.",
       "cancel": "Cancel",
       "disconnect": "Disconnect"
+    },
+    "syncConflict": {
+      "title": "Model catalog conflict",
+      "description": "The profile \"{name}\" has local edits, but the remote catalog also changed. Overwrite the local edits with the latest catalog, or keep your local version?",
+      "keepLocal": "Keep local",
+      "overwrite": "Overwrite"
     }
   },
   "settings": {
@@ -228,6 +234,19 @@
       "autoUpdateDescription": "Automatically update OpenCode",
       "snapshot": "Snapshot",
       "snapshotDescription": "Enable conversation snapshots"
+    },
+    "providerKeys": {
+      "title": "Provider API Keys",
+      "description": "Set the API key for any provider in the active opencode.json",
+      "noProviders": "No providers are defined in the active configuration.",
+      "configured": "Configured",
+      "notConfigured": "Not configured",
+      "enterPlaceholder": "Enter API key",
+      "replacePlaceholder": "Enter new key to replace",
+      "save": "Save",
+      "clear": "Clear",
+      "saved": "API key saved for {provider}",
+      "cleared": "API key cleared for {provider}"
     },
 "customProviders": {
     "title": "Custom Providers & Models",
@@ -693,7 +712,35 @@
     "duplicateFailedWithError": "Failed to duplicate profile: {error}",
     "duplicateCurrent": "Duplicate Current",
     "switchConfirmTitle": "Switch Profile?",
-    "switchConfirmDescription": "Switching profiles will change your active configuration. Continue?"
+    "switchConfirmDescription": "Switching profiles will change your active configuration. Continue?",
+    "newFromPreset": "New from Preset",
+    "presetDialogTitle": "Create Profile from Preset",
+    "presetDialogDescription": "Pick a template. The profile is created with the preset's opencode.json — everything else starts fresh.",
+    "presetKeyHint": "Presets don't include API keys. After creating, add yours in Settings → Provider API Keys.",
+    "presetLinkedBadge": "Live catalog",
+    "presetCreateSuccess": "Profile {name} created from preset",
+    "presetCreateFailed": "Failed to create profile from preset",
+    "presetCreateFailedWithError": "Failed to create profile from preset: {error}",
+    "presetSetApiKey": "Set API key",
+    "linkedBadge": "Linked",
+    "syncNow": "Sync catalog",
+    "syncing": "Syncing...",
+    "syncUpdated": "{name}: catalog updated",
+    "syncUpdatedWithOverrides": "{name}: catalog updated ({count} local override(s) kept)",
+    "syncUpToDate": "{name}: already up to date",
+    "syncFailed": "Sync failed",
+    "syncFailedWithError": "Sync failed: {error}",
+    "lastSynced": "Last synced: {time}",
+    "neverSynced": "Not synced yet",
+    "syncErrorNote": "Last sync failed — check your tailnet connection",
+    "resetToCatalog": "Reset to catalog",
+    "resetTitle": "Reset to catalog?",
+    "resetDescription": "This discards your local customizations to the managed providers in \"{name}\" and restores the pure catalog config. Your API keys and any providers/servers you added are kept.",
+    "resetConfirm": "Reset",
+    "resetting": "Resetting...",
+    "resetSuccess": "{name}: reset to catalog",
+    "resetFailed": "Reset failed",
+    "resetFailedWithError": "Reset failed: {error}"
   },
   "logs": {
     "disconnected": "Log stream disconnected",

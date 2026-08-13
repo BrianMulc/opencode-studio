@@ -28,6 +28,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PermissionEditor } from "@/components/permission-editor";
 import { CustomProviderModelEditor } from "@/components/custom-provider-model-editor";
+import { ProviderApiKeysEditor } from "@/components/provider-api-keys-editor";
 import { Sliders as Settings, Android, Download, Upload, Save, ChevronDown, Loader, Code, Github, Reload, Alert } from "@nsmr/pixelart-react";
 import { PageHelp } from "@/components/page-help";
 import { toast } from "sonner";
@@ -73,6 +74,7 @@ export default function SettingsPage() {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     general: true,
     customProviders: false,
+    providerKeys: false,
     permissions: false,
     advanced: false,
     prompts: false,
@@ -510,6 +512,32 @@ const [systemPrompt, setSystemPrompt] = useState("");
             </CollapsibleContent>
           </Card>
         </Collapsible>
+      )}
+
+      {config && (
+        <div id="settings-section-providerKeys" className="scroll-mt-4">
+        <Collapsible open={openSections.providerKeys} onOpenChange={() => toggleSection("providerKeys")}>
+          <Card className="hover-lift">
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Settings className="h-5 w-5" />
+                    <CardTitle>{t('providerKeys.title')}</CardTitle>
+                  </div>
+                  <ChevronDown className={`h-5 w-5 transition-transform duration-200 ${openSections.providerKeys ? "rotate-180" : ""}`} />
+                </div>
+                <CardDescription>{t('providerKeys.description')}</CardDescription>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="animate-scale-in">
+              <CardContent className="space-y-4 pt-0">
+                <ProviderApiKeysEditor config={config} onSaved={refreshData} />
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
+        </div>
       )}
 
       <Collapsible open={openSections.permissions} onOpenChange={() => toggleSection("permissions")}>

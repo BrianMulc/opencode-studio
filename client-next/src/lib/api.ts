@@ -879,6 +879,85 @@ export async function renameProfile(name: string, newName: string): Promise<{ su
   return data;
 }
 
+export interface ProfilePreset {
+  id: string;
+  name: string;
+  description: string;
+  suggestedName: string;
+  builtin: boolean;
+  configUrl: string;
+}
+
+export interface CreateFromPresetResult {
+  success: boolean;
+  name: string;
+  profiles: string[];
+  active: string | null;
+  linked: boolean;
+  catalogFetched: boolean;
+  warning?: string;
+}
+
+export async function getProfilePresets(): Promise<{ presets: ProfilePreset[] }> {
+  const { data } = await api.get<{ presets: ProfilePreset[] }>('/profile-presets');
+  return data;
+}
+
+export async function createProfileFromPreset(presetId: string, name?: string): Promise<CreateFromPresetResult> {
+  const { data } = await api.post('/profiles/from-preset', { presetId, name: name?.trim() || undefined });
+  return data;
+}
+
+export interface LinkedProfileInfo {
+  configUrl: string;
+  presetName: string | null;
+  linkedAt: number | null;
+  lastSyncedAt: number | null;
+  lastSyncStatus: 'ok' | 'error' | 'conflict' | null;
+  lastSyncError: string | null;
+}
+
+export async function getLinkedProfiles(): Promise<{ linked: Record<string, LinkedProfileInfo> }> {
+  const { data } = await api.get<{ linked: Record<string, LinkedProfileInfo> }>('/profiles/linked');
+  return data;
+}
+
+export interface SyncResult {
+  changed: boolean;
+  conflict?: boolean;
+  overridesPreserved?: number;
+  message?: string;
+  error?: string;
+}
+
+export async function syncLinkedProfile(name: string, force = false): Promise<SyncResult> {
+  const { data } = await api.post(`/profiles/${encodeURIComponent(name)}/sync`, { force });
+  return data;
+}
+
+export async function syncAllLinkedProfiles(): Promise<{ results: Record<string, SyncResult> }> {
+  const { data } = await api.post('/profiles/sync-all', {});
+  return data;
+}
+
+export async function unlinkProfile(name: string): Promise<{ success: boolean }> {
+  const { data } = await api.post(`/profiles/${encodeURIComponent(name)}/unlink`);
+  return data;
+}
+
+// Drops all local overrides and writes the pure catalog (apiKeys preserved).
+export async function resetProfileToCatalog(name: string): Promise<SyncResult> {
+  const { data } = await api.post(`/profiles/${encodeURIComponent(name)}/reset-to-catalog`);
+  return data;
+}
+
+// Sets (or clears with an empty string) the apiKey of a provider in the ACTIVE
+// opencode.json. The response never echoes the key back.
+export async function setProviderApiKey(providerId: string, apiKey: string): Promise<{ success: boolean; hasKey: boolean }> {
+  const { data } = await api.put(`/providers/${encodeURIComponent(providerId)}/apikey`, { apiKey });
+  return data;
+}
+
 export async function getOhMyConfig(): Promise<OhMyConfigResponse> {
   const { data } = await api.get<OhMyConfigResponse>('/ohmyopencode');
   return data;

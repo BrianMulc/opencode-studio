@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
+import { useRouter } from "next/navigation";
 import axios from "axios";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,17 +28,27 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Plus, Trash, Check, Edit, CardStack, Play, Copy } from "@nsmr/pixelart-react"
-import { getProfiles, createProfile, deleteProfile, activateProfile, renameProfile, duplicateProfile, type ProfileList } from "@/lib/api";
+import { Plus, Trash, Check, Edit, CardStack, Play, Copy, Download, Reload, Link } from "@nsmr/pixelart-react"
+import { getProfiles, createProfile, deleteProfile, activateProfile, renameProfile, duplicateProfile, getProfilePresets, createProfileFromPreset, getLinkedProfiles, syncLinkedProfile, resetProfileToCatalog, type ProfileList, type ProfilePreset, type LinkedProfileInfo } from "@/lib/api";
 import { PageHelp } from "@/components/page-help";
 
 export default function ProfilesPage() {
   const t = useTranslations('profiles');
+  const router = useRouter();
   const [data, setData] = useState<ProfileList | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newProfileName, setNewProfileName] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [presets, setPresets] = useState<ProfilePreset[]>([]);
+  const [presetOpen, setPresetOpen] = useState(false);
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+  const [presetProfileName, setPresetProfileName] = useState("");
+  const [creatingFromPreset, setCreatingFromPreset] = useState(false);
+  const [linked, setLinked] = useState<Record<string, LinkedProfileInfo>>({});
+  const [syncingProfile, setSyncingProfile] = useState<string | null>(null);
+  const [resetTarget, setResetTarget] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [renamingTarget, setRenamingTarget] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -65,9 +76,102 @@ export default function ProfilesPage() {
     }
   };
 
+  const loadLinked = async () => {
+    try {
+      const res = await getLinkedProfiles();
+      setLinked(res.linked);
+    } catch {
+      // Non-fatal: linked badges just won't show
+    }
+  };
+
   useEffect(() => {
     loadProfiles();
+    loadLinked();
+    getProfilePresets().then(res => setPresets(res.presets)).catch(() => {});
   }, []);
+
+  const handleSync = async (name: string) => {
+    try {
+      setSyncingProfile(name);
+      const result = await syncLinkedProfile(name);
+      if (result.changed && result.overridesPreserved && result.overridesPreserved > 0) {
+        toast.success(t('syncUpdatedWithOverrides', { name, count: result.overridesPreserved }));
+      } else if (result.changed) {
+        toast.success(t('syncUpdated', { name }));
+      } else {
+        toast.success(t('syncUpToDate', { name }));
+      }
+      loadProfiles();
+      loadLinked();
+    } catch (e) {
+      const msg = getErrorMessage(e);
+      toast.error(msg ? t('syncFailedWithError', { error: msg }) : t('syncFailed'));
+      loadLinked();
+    } finally {
+      setSyncingProfile(null);
+    }
+  };
+
+  const handleResetToCatalog = async () => {
+    if (!resetTarget) return;
+    try {
+      setResetting(true);
+      await resetProfileToCatalog(resetTarget);
+      toast.success(t('resetSuccess', { name: resetTarget }));
+      setResetTarget(null);
+      loadProfiles();
+      loadLinked();
+    } catch (e) {
+      const msg = getErrorMessage(e);
+      toast.error(msg ? t('resetFailedWithError', { error: msg }) : t('resetFailed'));
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const handleSelectPreset = (preset: ProfilePreset) => {
+    setSelectedPresetId(preset.id);
+    // Only auto-fill while the user hasn't typed a custom name
+    if (!presetProfileName || presets.some(p => p.suggestedName === presetProfileName)) {
+      setPresetProfileName(preset.suggestedName);
+    }
+  };
+
+  const handleCreateFromPreset = async () => {
+    if (!selectedPresetId) return;
+    try {
+      setCreatingFromPreset(true);
+      const result = await createProfileFromPreset(selectedPresetId, presetProfileName);
+      setPresetOpen(false);
+      setSelectedPresetId(null);
+      setPresetProfileName("");
+      loadProfiles();
+      loadLinked();
+      if (result.warning) {
+        // Catalog unreachable (off the tailnet?) — profile is created and
+        // linked, first successful sync will fill it in.
+        toast.warning(t('presetCreateSuccess', { name: result.name }), {
+          description: result.warning,
+          duration: 12000,
+        });
+      } else {
+        // Presets ship without API keys — guide the user to add theirs.
+        toast.success(t('presetCreateSuccess', { name: result.name }), {
+          action: {
+            label: t('presetSetApiKey'),
+            onClick: () => router.push('/settings?section=providerKeys'),
+          },
+          duration: 10000,
+        });
+      }
+    } catch (e) {
+      const msg = getErrorMessage(e);
+      toast.error(msg ? t('presetCreateFailedWithError', { error: msg }) : t('presetCreateFailed'));
+    } finally {
+      setCreatingFromPreset(false);
+    }
+  };
 
   const handleCreate = async () => {
     if (!newProfileName.trim()) return;
@@ -170,13 +274,67 @@ export default function ProfilesPage() {
             {t('description')}
           </p>
         </div>
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <div className="flex items-center gap-2">
+          {presets.length > 0 && (
+            <Dialog open={presetOpen} onOpenChange={setPresetOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline">
+                  <Download className="h-4 w-4 mr-2" />
+                  {t('newFromPreset')}
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>{t('presetDialogTitle')}</DialogTitle>
+                  <DialogDescription>
+                    {t('presetDialogDescription')}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3 py-2">
+                  {presets.map((preset) => {
+                    const selected = selectedPresetId === preset.id;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => handleSelectPreset(preset)}
+                        className={`w-full text-left p-3 rounded-lg border transition-all ${selected ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-border hover:border-primary/50 hover:bg-muted/50'}`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-sm">{preset.name}</span>
+                          <Badge variant="outline" className="font-mono text-[10px] font-normal shrink-0">
+                            <Link className="h-3 w-3 mr-1" />
+                            {t('presetLinkedBadge')}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">{preset.description}</p>
+                      </button>
+                    );
+                  })}
+                  <div className="pt-2">
+                    <Input
+                      placeholder={t('namePlaceholder')}
+                      value={presetProfileName}
+                      onChange={(e) => setPresetProfileName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleCreateFromPreset()}
+                    />
+                    <p className="text-[11px] text-muted-foreground mt-1.5">{t('presetKeyHint')}</p>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setPresetOpen(false)}>{t('cancel')}</Button>
+                  <Button onClick={handleCreateFromPreset} disabled={!selectedPresetId || creatingFromPreset}>{t('create')}</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
+          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
 <DialogTrigger asChild>
              <Button>
                 <Plus className="h-4 w-4 mr-2" />
                {t('newProfile')}
-             </Button>
-           </DialogTrigger>
+              </Button>
+            </DialogTrigger>
            <DialogContent>
              <DialogHeader>
                <DialogTitle>{t('createTitle')}</DialogTitle>
@@ -184,21 +342,22 @@ export default function ProfilesPage() {
                  {t('createDescription')}
                </DialogDescription>
              </DialogHeader>
-             <div className="py-4">
-               <Input
-                 placeholder={t('namePlaceholder')}
-                 value={newProfileName}
-                 onChange={(e) => setNewProfileName(e.target.value)}
-                 onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-               />
-             </div>
-             <DialogFooter>
-               <Button variant="outline" onClick={() => setCreateOpen(false)}>{t('cancel')}</Button>
-               <Button onClick={handleCreate} disabled={!newProfileName.trim() || creating}>{t('create')}</Button>
-             </DialogFooter>
-           </DialogContent>
-          </Dialog>
-       </header>
+              <div className="py-4">
+                <Input
+                  placeholder={t('namePlaceholder')}
+                  value={newProfileName}
+                  onChange={(e) => setNewProfileName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+                />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setCreateOpen(false)}>{t('cancel')}</Button>
+                <Button onClick={handleCreate} disabled={!newProfileName.trim() || creating}>{t('create')}</Button>
+              </DialogFooter>
+            </DialogContent>
+           </Dialog>
+        </div>
+        </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {data?.profiles.map((profile) => {
@@ -213,7 +372,15 @@ export default function ProfilesPage() {
                     </div>
                     <div>
                       <CardTitle className="text-lg">{profile}</CardTitle>
-                      {isActive && <Badge className="mt-1">{t('active')}</Badge>}
+                      <div className="flex items-center gap-1.5 mt-1">
+                        {isActive && <Badge>{t('active')}</Badge>}
+                        {linked[profile] && (
+                          <Badge variant="outline" className="text-[10px] font-normal" title={linked[profile].configUrl}>
+                            <Link className="h-3 w-3 mr-1" />
+                            {t('linkedBadge')}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
@@ -249,22 +416,53 @@ export default function ProfilesPage() {
                   </div>
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-2">
+                {linked[profile] && (
+                  <Button
+                    className="w-full"
+                    variant="secondary"
+                    onClick={() => handleSync(profile)}
+                    disabled={syncingProfile === profile}
+                  >
+                    <Reload className={`h-4 w-4 mr-2 ${syncingProfile === profile ? 'animate-spin' : ''}`} />
+                    {syncingProfile === profile ? t('syncing') : t('syncNow')}
+                  </Button>
+                )}
                 {isActive ? (
                   <Button disabled className="w-full" variant="secondary">
                      <Check className="h-4 w-4 mr-2" />
                     {t('current')}
                   </Button>
                 ) : (
-                  <Button 
-                    className="w-full" 
-                    variant="outline" 
+                  <Button
+                    className="w-full"
+                    variant="outline"
                     onClick={() => handleActivate(profile)}
                     disabled={activating === profile}
                   >
                      <Play className="h-4 w-4 mr-2" />
                     {t('switch')}
                   </Button>
+                )}
+                {linked[profile] && (
+                  <>
+                    <p className="text-[11px] text-muted-foreground text-center">
+                      {linked[profile].lastSyncStatus === 'error'
+                        ? t('syncErrorNote')
+                        : linked[profile].lastSyncedAt
+                          ? t('lastSynced', { time: new Date(linked[profile].lastSyncedAt!).toLocaleString() })
+                          : t('neverSynced')}
+                    </p>
+                    <div className="flex items-center justify-center">
+                      <button
+                        type="button"
+                        className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+                        onClick={() => setResetTarget(profile)}
+                      >
+                        {t('resetToCatalog')}
+                      </button>
+                    </div>
+                  </>
                 )}
               </CardContent>
             </Card>
@@ -334,6 +532,23 @@ export default function ProfilesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!resetTarget} onOpenChange={(open) => { if (!open) setResetTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('resetTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('resetDescription', { name: resetTarget ?? '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={resetting}>{t('cancelBtn')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleResetToCatalog} disabled={resetting}>
+              {resetting ? t('resetting') : t('resetConfirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
