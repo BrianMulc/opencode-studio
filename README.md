@@ -26,15 +26,26 @@
 
 ### Windows
 
-1. **Download** — Go to the [latest release page](https://github.com/BrianMulc/opencode-studio/releases/latest) and click the `.zip` file under "Assets" to download it
-2. **Unzip** — Find the downloaded ZIP file, right-click it, and select **"Extract All..."**. Choose a location like your Desktop or Documents folder
-3. **Install** — Open the extracted folder and **double-click** the file named `Install-OpenCode-Studio-Windows.vbs`
-   - If a security warning appears, click **"OK"** or **"Run"** — this is normal for scripts
-   - A window will appear showing download progress. Wait for it to finish (this may take a few minutes)
-   - If Node.js is not installed, it will be downloaded and installed automatically — **no admin password needed**
-4. **Launch** — Find the **OpenCode Studio** shortcut on your Desktop and **double-click** it
-   - Your web browser will open automatically — no terminal windows will appear
-5. **To stop** — Just close the browser tab. Everything shuts down automatically.
+**[⬇️ Download OpenCode Studio for Windows](https://github.com/BrianMulc/opencode-studio/releases/latest/download/OpenCodeStudio-Setup.exe)**
+
+1. **Download & run** `OpenCodeStudio-Setup.exe` (link above — always the latest release)
+   - If Windows SmartScreen appears, click **"More info" → "Run anyway"** (the installer is not code-signed yet)
+2. The setup wizard installs the app — **no admin password, no prerequisites** (Node.js is included). Takes under a minute.
+3. Keep **"Launch OpenCode Studio now"** checked on the finish page, or use the new Desktop shortcut.
+   - Your web browser opens automatically — no terminal windows.
+4. **To stop** — close the browser tab. Everything shuts down automatically.
+
+The app updates itself (Settings → Updates), so you only ever install once. A proper uninstaller is included (Windows Settings → Apps).
+
+<details>
+<summary><strong>Alternative: manual install from source</strong></summary>
+
+1. **Download** — Go to the [latest release page](https://github.com/BrianMulc/opencode-studio/releases/latest) and click the `.zip` file under "Assets" (or clone the repo)
+2. **Unzip** — Extract the ZIP somewhere, e.g. Desktop
+3. **Install** — Double-click `Install-OpenCode-Studio-Windows.vbs` (installs Node.js automatically if missing)
+4. **Launch** — Double-click the **OpenCode Studio** Desktop shortcut
+
+</details>
 
 <details>
 <summary><strong>macOS</strong></summary>

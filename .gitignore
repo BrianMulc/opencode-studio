@@ -44,3 +44,14 @@ vendor/
 
 # Generated per-machine by register-protocol.js postinstall
 server/launcher.vbs
+
+# Inno Setup: build staging + output
+installer/runtime/
+installer/Output/
+
+# NOTE: the two entries below apply to the INSTALL DIRECTORY after the in-app
+# updater bootstraps git there (git init + reset --hard origin/master).
+# `git clean -fd` spares gitignored paths, so the bundled runtime and the
+# uninstaller survive self-updates.
+/runtime/
+/unins*

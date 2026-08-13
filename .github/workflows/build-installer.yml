@@ -1,0 +1,91 @@
+name: Build Windows installer
+
+# Push a tag to cut a release:  git tag v2.9.1 && git push origin v2.9.1
+# The workflow builds the app, bundles a portable Node.js runtime, compiles
+# the Inno Setup installer, and attaches OpenCodeStudio-Setup.exe to a
+# GitHub Release for that tag.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name to build (e.g. v2.9.1) - only for manual runs'
+        required: false
+
+permissions:
+  contents: write
+
+env:
+  NODE_RUNTIME_VERSION: '24.19.0'  # portable Node.js LTS bundled into the installer
+
+jobs:
+  build-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version and verify it matches package.json
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ($tag -notlike 'v*') { $tag = "${{ inputs.tag_name }}" }
+          if (-not $tag) { Write-Error 'No tag name available'; exit 1 }
+          $version = $tag.TrimStart('v')
+          $pkg = (Get-Content package.json | ConvertFrom-Json).version
+          Write-Host "Tag: $tag -> version $version | package.json: $pkg"
+          if ($version -ne $pkg) {
+            Write-Error "Tag version ($version) does not match package.json version ($pkg). Bump the version first."
+            exit 1
+          }
+          echo "APP_VERSION=$version" >> $env:GITHUB_ENV
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: |
+            server/package-lock.json
+            client-next/package-lock.json
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          npm ci --prefix server
+          npm ci --prefix client-next
+
+      - name: Build client (production)
+        shell: pwsh
+        run: npm run build --prefix client-next
+
+      - name: Download portable Node.js runtime
+        shell: pwsh
+        run: |
+          $v = $env:NODE_RUNTIME_VERSION
+          $url = "https://nodejs.org/dist/v$v/node-v$v-win-x64.zip"
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\node-runtime.zip"
+          Expand-Archive "$env:TEMP\node-runtime.zip" -DestinationPath "$env:TEMP\node-runtime"
+          New-Item -ItemType Directory -Path 'installer\runtime\nodejs' -Force | Out-Null
+          Copy-Item -Recurse -Force "$env:TEMP\node-runtime\node-v$v-win-x64\*" 'installer\runtime\nodejs\'
+          & 'installer\runtime\nodejs\node.exe' -v
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Compile installer
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          & $iscc "/DAppVersion=$env:APP_VERSION" 'installer\opencode-studio.iss'
+          if ($LASTEXITCODE -ne 0) { Write-Error "ISCC failed with $LASTEXITCODE"; exit $LASTEXITCODE }
+          Get-Item installer\Output\OpenCodeStudio-Setup.exe | Select-Object Name, Length
+
+      - name: Create GitHub Release with installer
+        uses: softprops/action-gh-release@v2
+        with:
+          name: OpenCode Studio v${{ env.APP_VERSION }}
+          generate_release_notes: true
+          files: installer/Output/OpenCodeStudio-Setup.exe

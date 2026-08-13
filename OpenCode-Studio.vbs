@@ -31,6 +31,7 @@ Function FindNode()
     On Error Resume Next
     ' Try common locations
     candidates = Array( _
+        scriptDir & "\runtime\nodejs\node.exe", _
         WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\opencode-studio\nodejs\node.exe"), _
         WshShell.ExpandEnvironmentStrings("%LOCALAPPDATA%\Programs\nodejs\node.exe"), _
         WshShell.ExpandEnvironmentStrings("%ProgramFiles%\nodejs\node.exe"), _
@@ -102,6 +103,10 @@ End If
 ' --- Start server (hidden, no cmd.exe wrapper) ---
 ' Launch node.exe directly to avoid any cmd.exe console window flash.
 ' The server spawns the Next.js client and opens the browser automatically.
+' Prepend the runtime dir to this process's PATH first so the server's child
+' processes (e.g. npm during self-updates) resolve when using a portable Node.
+nodeDir = fso.GetParentFolderName(nodeExe)
+WshShell.Environment("Process").Item("PATH") = nodeDir & ";" & WshShell.Environment("Process").Item("PATH")
 serverScript = scriptDir & "\server\index.js"
 WshShell.Run """" & nodeExe & """ """ & serverScript & """", 0, False
 
