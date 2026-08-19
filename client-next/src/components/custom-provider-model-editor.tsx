@@ -412,7 +412,7 @@ export function CustomProviderModelEditor({ config, onSave }: CustomProviderMode
           {t("empty")}
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[220px_1fr]">
+        <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
           <div className="space-y-2 rounded-md border bg-muted/20 p-2">
             {providers.map((provider, index) => (
               <button
@@ -436,9 +436,9 @@ export function CustomProviderModelEditor({ config, onSave }: CustomProviderMode
             const selectedModelIndex = selectedModelIndexes[providerIndex] || 0;
 
             return (
-              <div key={providerIndex} className="rounded-md border bg-muted/20 p-4">
+              <div key={providerIndex} className="min-w-0 rounded-md border bg-muted/20 p-4">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                  <div className="grid flex-1 gap-3 md:grid-cols-3">
+                  <div className="grid min-w-0 flex-1 gap-3 md:grid-cols-3">
                     <div className="space-y-2">
                       <Label>{t("providerId")}</Label>
                       <Input
@@ -597,7 +597,7 @@ export function CustomProviderModelEditor({ config, onSave }: CustomProviderMode
                   {provider.models.map((model, modelIndex) => (
                     modelIndex === selectedModelIndex && (
                     <div key={modelIndex} className="rounded-md border bg-background p-3">
-                      <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto]">
+                      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
                         <div className="space-y-2">
                           <Label>{t("modelKey")}</Label>
                           <Input
