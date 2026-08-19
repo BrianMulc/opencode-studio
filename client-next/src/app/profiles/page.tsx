@@ -30,11 +30,13 @@ import {
 import { toast } from "sonner";
 import { Plus, Trash, Check, Edit, CardStack, Play, Copy, Download, Reload, Link } from "@nsmr/pixelart-react"
 import { getProfiles, createProfile, deleteProfile, activateProfile, renameProfile, duplicateProfile, getProfilePresets, createProfileFromPreset, getLinkedProfiles, syncLinkedProfile, resetProfileToCatalog, type ProfileList, type ProfilePreset, type LinkedProfileInfo } from "@/lib/api";
+import { useApp } from "@/lib/context";
 import { PageHelp } from "@/components/page-help";
 
 export default function ProfilesPage() {
   const t = useTranslations('profiles');
   const router = useRouter();
+  const { refreshData } = useApp();
   const [data, setData] = useState<ProfileList | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -104,6 +106,8 @@ export default function ProfilesPage() {
       }
       loadProfiles();
       loadLinked();
+      // Syncing the active profile rewrites the live opencode.json on disk.
+      if (data?.active === name) await refreshData();
     } catch (e) {
       const msg = getErrorMessage(e);
       toast.error(msg ? t('syncFailedWithError', { error: msg }) : t('syncFailed'));
@@ -122,6 +126,8 @@ export default function ProfilesPage() {
       setResetTarget(null);
       loadProfiles();
       loadLinked();
+      // Resetting the active profile rewrites the live opencode.json on disk.
+      if (data?.active === resetTarget) await refreshData();
     } catch (e) {
       const msg = getErrorMessage(e);
       toast.error(msg ? t('resetFailedWithError', { error: msg }) : t('resetFailed'));
@@ -210,6 +216,10 @@ export default function ProfilesPage() {
       await activateProfile(name);
       toast.success(t('switchSuccess', { name }));
       loadProfiles();
+      // Switching re-points the ~/.config/opencode junction at another
+      // profile's opencode.json — reload the global config so every page
+      // (e.g. Settings → Custom Providers & Models) reflects the new file.
+      await refreshData();
     } catch (e) {
       const msg = getErrorMessage(e);
       toast.error(msg ? t('switchFailedWithError', { error: msg }) : t('switchFailed'));

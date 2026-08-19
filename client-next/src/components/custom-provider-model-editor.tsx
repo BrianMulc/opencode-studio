@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -353,6 +353,21 @@ export function CustomProviderModelEditor({ config, onSave }: CustomProviderMode
     setDefaultModel(getDefaultModel(config));
     setSmallModel(config.small_model || "");
   };
+
+  // Re-sync when the underlying config changes outside this editor (profile
+  // switch, GitHub restore, cloud auto-sync pull, ...). The useState
+  // initializers above only run once at mount, so without this the panel
+  // would keep showing the previous config's providers and models.
+  const lastSyncedConfigRef = useRef(config);
+  useEffect(() => {
+    if (lastSyncedConfigRef.current === config) return;
+    lastSyncedConfigRef.current = config;
+    setProviders(providerDraftsFromConfig(config));
+    setSelectedProviderIndex(0);
+    setSelectedModelIndexes({});
+    setDefaultModel(getDefaultModel(config));
+    setSmallModel(config.small_model || "");
+  }, [config]);
 
   const handleSave = async () => {
     if (hasProviderIdError || hasModelKeyError) return;
