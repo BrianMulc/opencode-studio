@@ -354,7 +354,7 @@
       "title": "Backup & Restore",
       "description": "Export or import your complete OpenCode configuration",
       "exportTitle": "Export Backup",
-      "exportDescription": "Download all settings, MCP configs, skills, and plugins",
+      "exportDescription": "Download everything: settings, MCP servers, agents, commands, skills, plugins, prompts, rules, all profiles, and studio data",
       "downloadBackup": "Download Backup",
       "restoreTitle": "Restore Backup",
       "restoreDescription": "Import a previously exported backup file",

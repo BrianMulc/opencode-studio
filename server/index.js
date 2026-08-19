@@ -51,6 +51,7 @@ const {
 const pkg = require('./package.json');
 const profileManager = require('./profile-manager');
 const modelPolicy = require('./lib/model-policy');
+const backupFiles = require('./lib/backup-files');
 const SERVER_VERSION = pkg.version;
 const MIN_CLIENT_VERSION = '1.16.0';
 
@@ -147,7 +148,10 @@ const atomicWriteFileSync = (filePath, data, options = 'utf8') => {
 };
 
 const app = express();
-const DEFAULT_PORT = 1920;
+// OCS_PORT overrides the base port (testing/dev). Note findAvailablePort probes
+// without a host binding, which on Windows can miss a 127.0.0.1-only listener —
+// when running a second instance, always pass an explicit OCS_PORT.
+const DEFAULT_PORT = parseInt(process.env.OCS_PORT || '', 10) || 1920;
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
 function findAvailablePort(startPort) {
@@ -216,6 +220,7 @@ app.use(bodyParser.text({ type: ['text/*', 'application/yaml'], limit: '50mb' })
 
 const HOME_DIR = os.homedir();
 const STUDIO_CONFIG_PATH = path.join(HOME_DIR, '.config', 'opencode-studio', 'studio.json');
+const STUDIO_DATA_DIR = path.dirname(STUDIO_CONFIG_PATH);
 const PENDING_ACTION_PATH = path.join(HOME_DIR, '.config', 'opencode-studio', 'pending-action.json');
 const ANTIGRAVITY_ACCOUNTS_PATH = path.join(HOME_DIR, '.config', 'opencode', 'antigravity-accounts.json');
 const LOG_DIR = path.join(HOME_DIR, '.local', 'share', 'opencode', 'log');
@@ -2128,39 +2133,10 @@ app.post('/api/project/rules', (req, res) => {
 
 app.get('/api/backup', (req, res) => {
     try {
-        const studioConfig = loadStudioConfig();
-        const opencodeConfig = loadConfig();
-        const skills = [];
-        const plugins = [];
-        
-        const sd = getActiveSkillDir();
-        if (sd && fs.existsSync(sd)) {
-            fs.readdirSync(sd, { withFileTypes: true })
-                .filter(e => e.isDirectory() && fs.existsSync(path.join(sd, e.name, 'SKILL.md')))
-                .forEach(e => {
-                    const content = fs.readFileSync(path.join(sd, e.name, 'SKILL.md'), 'utf8');
-                    skills.push({ name: e.name, content });
-                });
-        }
-        
-        const pd = getActivePluginDir();
-        if (pd && fs.existsSync(pd)) {
-            fs.readdirSync(pd, { withFileTypes: true }).forEach(e => {
-                const fp = path.join(pd, e.name);
-                if (e.isFile() && /\.(js|ts)$/.test(e.name)) {
-                    plugins.push({ name: e.name.replace(/\.(js|ts)$/, ''), content: fs.readFileSync(fp, 'utf8') });
-                }
-            });
-        }
-        
-        res.json({
-            version: 1,
-            timestamp: new Date().toISOString(),
-            studioConfig,
-            opencodeConfig,
-            skills,
-            plugins
-        });
+        // Local download: include cloud-sync credentials too — it's the user's
+        // own file, and dropping tokens here would break the cloud connection
+        // on restore. (Cloud-pushed backups strip them — see buildBackupData.)
+        res.json(buildBackupData({ includeCloudSecrets: true }));
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -2168,30 +2144,7 @@ app.get('/api/backup', (req, res) => {
 
 app.post('/api/restore', (req, res) => {
     try {
-        const { studioConfig, opencodeConfig, skills, plugins } = req.body;
-        assertSafeBackupResourceNames(req.body || {});
-        
-        if (studioConfig) saveStudioConfig(studioConfig);
-        if (opencodeConfig) saveConfig(opencodeConfig);
-        
-        const sd = getActiveSkillDir();
-        if (sd && skills && Array.isArray(skills)) {
-            if (!fs.existsSync(sd)) fs.mkdirSync(sd, { recursive: true });
-            skills.forEach(s => {
-                const skillDir = path.join(sd, s.name);
-                if (!fs.existsSync(skillDir)) fs.mkdirSync(skillDir, { recursive: true });
-                atomicWriteFileSync(path.join(skillDir, 'SKILL.md'), s.content);
-            });
-        }
-        
-        const pd = getActivePluginDir();
-        if (pd && plugins && Array.isArray(plugins)) {
-            if (!fs.existsSync(pd)) fs.mkdirSync(pd, { recursive: true });
-            plugins.forEach(p => {
-                atomicWriteFileSync(path.join(pd, `${p.name}.js`), p.content);
-            });
-        }
-        
+        restoreFromBackup(req.body, loadStudioConfig());
         res.json({ success: true });
     } catch (err) {
         sendErrorResponse(res, err);
@@ -2230,12 +2183,14 @@ app.delete('/api/cooldowns/:name', (req, res) => {
 
 const DROPBOX_CLIENT_ID = 'your-dropbox-app-key';
 
-function buildBackupData() {
+function buildBackupData({ includeCloudSecrets = false } = {}) {
     const studio = loadStudioConfig();
     const opencodeConfig = loadConfig();
     const skills = [];
     const plugins = [];
-    
+
+    // v1 itemized fields — kept so older app versions can still read the
+    // essentials from a v2 backup file.
     const sd = getActiveSkillDir();
     if (sd && fs.existsSync(sd)) {
         fs.readdirSync(sd, { withFileTypes: true })
@@ -2244,7 +2199,7 @@ function buildBackupData() {
                 skills.push({ name: e.name, content: fs.readFileSync(path.join(sd, e.name, 'SKILL.md'), 'utf8') });
             });
     }
-    
+
     const pd = getActivePluginDir();
     if (pd && fs.existsSync(pd)) {
         fs.readdirSync(pd, { withFileTypes: true }).forEach(e => {
@@ -2253,34 +2208,174 @@ function buildBackupData() {
             }
         });
     }
-    
-    const cloudSettings = studio.cloudProvider ? { provider: studio.cloudProvider } : {};
-    
+
+    // v2: whole-tree snapshots so nothing user-made is left behind — agents,
+    // commands, rules, prompts, oh-my-openagent configs, plugin folders, and
+    // anything future features add to these directories.
+    const configPath = getConfigPath();
+    const configDir = configPath ? backupFiles.collectDirTree(path.dirname(configPath)) : null;
+
+    let activeProfile = null;
+    const profiles = {};
+    try {
+        const { profiles: names, active } = profileManager.listProfiles();
+        if (active && active !== 'default (unmanaged)') activeProfile = active;
+        for (const name of names) {
+            profiles[name] = backupFiles.collectDirTree(profileManager.getProfileDir(name));
+        }
+    } catch (err) {
+        console.warn('[Backup] Failed to snapshot profiles:', err.message);
+    }
+
+    const studioDir = backupFiles.collectDirTree(STUDIO_DATA_DIR);
+
+    // The rules file (AGENTS.md / CLAUDE.md) can live in a PARENT of the
+    // config dir — findRulesFile walks up — which is outside every tree we
+    // snapshot above. Capture it explicitly.
+    let rulesFile = null;
+    try {
+        const found = findRulesFile();
+        if (found.path) {
+            const configDirPath = configPath ? path.dirname(configPath) : null;
+            const inConfigDir = configDirPath
+                ? path.resolve(path.dirname(found.path)).toLowerCase() === path.resolve(configDirPath).toLowerCase()
+                : false;
+            rulesFile = { fileName: path.basename(found.path), content: fs.readFileSync(found.path, 'utf8'), inConfigDir };
+        }
+    } catch (err) {
+        console.warn('[Backup] Failed to capture rules file:', err.message);
+    }
+
+    let studioConfig = studio;
+    if (!includeCloudSecrets) {
+        // Never push this machine's cloud-sync connection to the cloud.
+        studioConfig = { ...studio, cloudToken: undefined, cloudRefreshToken: undefined, cloudProvider: undefined };
+        // studio.json inside the tree would still carry those credentials —
+        // scrub that entry identically.
+        const entry = studioDir.files.find(f => f.path === 'studio.json');
+        if (entry) {
+            try {
+                const parsed = JSON.parse(entry.content);
+                delete parsed.cloudToken;
+                delete parsed.cloudRefreshToken;
+                delete parsed.cloudProvider;
+                entry.content = JSON.stringify(parsed, null, 2);
+            } catch {}
+        }
+    }
+
     return {
-        version: 1,
+        version: 2,
         timestamp: new Date().toISOString(),
-        studioConfig: { ...studio, cloudToken: undefined, cloudProvider: undefined },
+        studioConfig,
         opencodeConfig,
         skills,
-        plugins
+        plugins,
+        activeProfile,
+        configDir,
+        profiles,
+        studioDir,
+        rulesFile
     };
+}
+
+// Restore variant that also works on a fresh machine: saveConfig() throws when
+// no config location exists yet, so create the default one if needed.
+function saveConfigForRestore(config) {
+    let cp = getConfigPath();
+    if (!cp) {
+        const dir = path.join(HOME_DIR, '.config', 'opencode');
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        cp = path.join(dir, 'opencode.json');
+    }
+    atomicWriteFileSync(cp, JSON.stringify(config, null, 2));
 }
 
 function restoreFromBackup(backup, studio) {
     assertSafeBackupResourceNames(backup || {});
 
+    const isV2 = (backup?.version || 1) >= 2;
+
+    // v2 directory trees first: they can create the config location that
+    // opencodeConfig needs below (first-time restore on a fresh machine).
+    let configTreeRestored = false;
+    if (isV2) {
+        // 1) Every profile directory (configs, agents, skills, plugins,
+        //    oh-my-openagent files, linked-source markers — full trees).
+        const profileEntries = backup.profiles && typeof backup.profiles === 'object' ? Object.entries(backup.profiles) : [];
+        const restoredProfiles = [];
+        for (const [name, tree] of profileEntries) {
+            if (!/^[a-zA-Z0-9._-]+$/.test(name) || name === '.' || name === '..') {
+                const err = new Error(`Invalid profile name in backup: ${name}`);
+                err.statusCode = 400; err.code = 'INVALID_PROFILE_NAME'; throw err;
+            }
+            if (!tree || !Array.isArray(tree.files)) {
+                const err = new Error(`Invalid profile tree in backup: ${name}`);
+                err.statusCode = 400; err.code = 'INVALID_BACKUP_FILES'; throw err;
+            }
+            backupFiles.restoreDirTree(profileManager.getProfileDir(name), tree.files);
+            restoredProfiles.push(name);
+        }
+
+        // 2) Re-point the active profile — only when the profile system already
+        //    manages ~/.config/opencode here. Never convert an unmanaged
+        //    install into a managed one as a side effect of a restore.
+        if (backup.activeProfile && restoredProfiles.includes(backup.activeProfile)
+            && profileManager.isSymlink(profileManager.OPENCODE_DIR)) {
+            profileManager.activateProfile(backup.activeProfile);
+            configTreeRestored = true;
+        }
+
+        // 3) Active config dir tree. Skipped when the active profile was
+        //    restored+activated above: the junction now serves the same tree.
+        if (!configTreeRestored && backup.configDir && Array.isArray(backup.configDir.files)) {
+            const cp = getConfigPath();
+            const targetDir = cp ? path.dirname(cp) : path.join(HOME_DIR, '.config', 'opencode');
+            backupFiles.restoreDirTree(targetDir, backup.configDir.files);
+            configTreeRestored = true;
+        }
+
+        // 4) Studio data dir (agent presets, pool metadata, auth profiles...).
+        //    Restored BEFORE studioConfig below so the merged write wins.
+        if (backup.studioDir && Array.isArray(backup.studioDir.files)) {
+            backupFiles.restoreDirTree(STUDIO_DATA_DIR, backup.studioDir.files);
+        }
+
+        // 5) Rules file captured from OUTSIDE the snapshotted trees
+        //    (findRulesFile walks up from the config dir). Normalized into the
+        //    active config dir — same place the Rules editor writes new files.
+        if (backup.rulesFile && typeof backup.rulesFile.content === 'string') {
+            const fileName = path.basename(String(backup.rulesFile.fileName || ''));
+            if (fileName !== 'AGENTS.md' && fileName !== 'CLAUDE.md') {
+                const err = new Error(`Invalid rules file name in backup: ${backup.rulesFile.fileName}`);
+                err.statusCode = 400; err.code = 'INVALID_RULES_FILE'; throw err;
+            }
+            // When it lived in the config dir, the tree restore already wrote it.
+            if (!(configTreeRestored && backup.rulesFile.inConfigDir)) {
+                const cp = getConfigPath();
+                const targetDir = cp ? path.dirname(cp) : path.join(HOME_DIR, '.config', 'opencode');
+                atomicWriteFileSync(path.join(targetDir, fileName), backup.rulesFile.content);
+            }
+        }
+    }
+
     if (backup.studioConfig) {
-        const merged = { 
-            ...backup.studioConfig, 
+        const merged = {
+            ...backup.studioConfig,
             cloudProvider: studio.cloudProvider,
             cloudToken: studio.cloudToken,
+            cloudRefreshToken: studio.cloudRefreshToken,
             autoSync: studio.autoSync,
-            lastSyncAt: studio.lastSyncAt 
+            lastSyncAt: studio.lastSyncAt
         };
         saveStudioConfig(merged);
     }
-    if (backup.opencodeConfig) saveConfig(backup.opencodeConfig);
-    
+    // Skipped when a tree restore already wrote the raw config file — avoids a
+    // duplicate opencode.json next to a restored opencode.jsonc.
+    if (backup.opencodeConfig && !configTreeRestored) saveConfigForRestore(backup.opencodeConfig);
+
+    // v1 itemized fields (also present in v2 payloads; same content, so the
+    // writes below are idempotent when the trees already restored them).
     const sd = getActiveSkillDir();
     if (sd && backup.skills && Array.isArray(backup.skills)) {
         if (!fs.existsSync(sd)) fs.mkdirSync(sd, { recursive: true });
@@ -2290,7 +2385,7 @@ function restoreFromBackup(backup, studio) {
             atomicWriteFileSync(path.join(skillDir, 'SKILL.md'), s.content);
         });
     }
-    
+
     const pd = getActivePluginDir();
     if (pd && backup.plugins && Array.isArray(backup.plugins)) {
         if (!fs.existsSync(pd)) fs.mkdirSync(pd, { recursive: true });
@@ -3563,16 +3658,33 @@ async function performGitHubBackup(options = {}) {
         
         const backupOpencodeDir = path.join(tempDir, 'opencode');
         const backupStudioDir = path.join(tempDir, 'opencode-studio');
-        
+        const backupProfilesDir = path.join(tempDir, 'opencode-profiles');
+
         if (fs.existsSync(backupOpencodeDir)) fs.rmSync(backupOpencodeDir, { recursive: true });
         if (fs.existsSync(backupStudioDir)) fs.rmSync(backupStudioDir, { recursive: true });
-        
+        if (fs.existsSync(backupProfilesDir)) fs.rmSync(backupProfilesDir, { recursive: true });
+
         copyDirContents(opencodeDir, backupOpencodeDir);
         copyDirContents(studioDir, backupStudioDir);
-        
-        await execPromise('git add opencode/ opencode-studio/ .gitignore', { cwd: tempDir });
-        
+
+        // Every profile (not just the active one) + which one was active, so a
+        // restore can rebuild the whole profile system, not just the live config.
         const timestamp = new Date().toISOString();
+        const manifest = { version: 2, timestamp, activeProfile: null };
+        let hasProfiles = false;
+        try {
+            const { profiles: names, active } = profileManager.listProfiles();
+            if (names.length > 0) {
+                copyDirContents(profileManager.PROFILES_DIR, backupProfilesDir);
+                hasProfiles = fs.existsSync(backupProfilesDir);
+            }
+            if (active && active !== 'default (unmanaged)') manifest.activeProfile = active;
+        } catch (e) {
+            console.warn('[GitHub Backup] profiles snapshot failed:', e.message);
+        }
+        fs.writeFileSync(path.join(tempDir, 'backup-manifest.json'), JSON.stringify(manifest, null, 2));
+
+        await execPromise(`git add opencode/ opencode-studio/ backup-manifest.json .gitignore${hasProfiles ? ' opencode-profiles/' : ''}`, { cwd: tempDir });
         const commitMessage = `OpenCode Studio backup ${timestamp}`;
         
         let result = { success: true, timestamp, url: `https://github.com/${repoName}` };
@@ -3701,6 +3813,27 @@ app.post('/api/github/restore', async (req, res) => {
         copyDirContents(backupOpencodeDir, opencodeDir);
         if (fs.existsSync(backupStudioDir)) {
             copyDirContents(backupStudioDir, studioDir);
+        }
+
+        // Restore every backed-up profile, then re-point the active one.
+        // Only when this install is already profile-managed (junction) —
+        // never convert an unmanaged install as a side effect.
+        const backupProfilesDir = path.join(tempDir, 'opencode-profiles');
+        if (fs.existsSync(backupProfilesDir)) {
+            copyDirContents(backupProfilesDir, profileManager.PROFILES_DIR);
+            try {
+                const manifestPath = path.join(tempDir, 'backup-manifest.json');
+                if (fs.existsSync(manifestPath)) {
+                    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+                    if (manifest.activeProfile
+                        && profileManager.isSymlink(profileManager.OPENCODE_DIR)
+                        && fs.existsSync(profileManager.getProfileDir(manifest.activeProfile))) {
+                        profileManager.activateProfile(manifest.activeProfile);
+                    }
+                }
+            } catch (e) {
+                console.warn('[GitHub Restore] profile re-activation failed:', e.message);
+            }
         }
         
         fs.rmSync(tempDir, { recursive: true });

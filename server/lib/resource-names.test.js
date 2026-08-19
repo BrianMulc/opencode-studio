@@ -1,61 +1,56 @@
-const assert = require('node:assert/strict');
-const { describe, it } = require('node:test');
+import { describe, it, expect } from 'vitest';
 
-const {
+import {
     assertSafeBackupResourceNames,
     isSafeAgentName,
     isSafeAuthProfileName,
     isSafePluginName,
     isSafeSkillName,
-} = require('./resource-names');
+} from './resource-names.js';
 
 describe('resource name policy', () => {
     it('accepts normal skill, plugin, and agent names', () => {
-        assert.equal(isSafeSkillName('code-review'), true);
-        assert.equal(isSafePluginName('watcher.plugin'), true);
-        assert.equal(isSafePluginName('watcher.ts'), true);
-        assert.equal(isSafeAgentName('Build Agent'), true);
-        assert.equal(isSafeAuthProfileName('jikui.feng+oss@example.com'), true);
+        expect(isSafeSkillName('code-review')).toBe(true);
+        expect(isSafePluginName('watcher.plugin')).toBe(true);
+        expect(isSafePluginName('watcher.ts')).toBe(true);
+        expect(isSafeAgentName('Build Agent')).toBe(true);
+        expect(isSafeAuthProfileName('jikui.feng+oss@example.com')).toBe(true);
     });
 
     it('rejects path traversal and path separator names', () => {
         for (const name of ['../escape', '..\\escape', '/tmp/escape', 'nested/plugin', '.', '..']) {
-            assert.equal(isSafeSkillName(name), false, `skill ${name}`);
-            assert.equal(isSafePluginName(name), false, `plugin ${name}`);
-            assert.equal(isSafeAgentName(name), false, `agent ${name}`);
-            assert.equal(isSafeAuthProfileName(name), false, `auth profile ${name}`);
+            expect(isSafeSkillName(name), `skill ${name}`).toBe(false);
+            expect(isSafePluginName(name), `plugin ${name}`).toBe(false);
+            expect(isSafeAgentName(name), `agent ${name}`).toBe(false);
+            expect(isSafeAuthProfileName(name), `auth profile ${name}`).toBe(false);
         }
     });
 
     it('rejects malformed auth profile names', () => {
         for (const name of [' user@example.com', 'user@example.com ', 'profile:name', 'profile*name', '']) {
-            assert.equal(isSafeAuthProfileName(name), false, `auth profile ${name}`);
+            expect(isSafeAuthProfileName(name), `auth profile ${name}`).toBe(false);
         }
     });
 
     it('rejects malformed backup skill and plugin names before restore writes', () => {
-        assert.doesNotThrow(() => {
+        expect(() => {
             assertSafeBackupResourceNames({
                 skills: [{ name: 'debugging', content: 'ok' }],
                 plugins: [{ name: 'hooks', content: 'ok' }],
             });
-        });
+        }).not.toThrow();
 
-        assert.throws(
-            () => assertSafeBackupResourceNames({ skills: [{ name: '../escape', content: 'bad' }] }),
-            /Invalid skill name/
-        );
-        assert.throws(
-            () => assertSafeBackupResourceNames({ plugins: [{ name: '../escape', content: 'bad' }] }),
-            /Invalid plugin name/
-        );
-        assert.throws(
-            () => assertSafeBackupResourceNames({ skills: { name: 'debugging', content: 'bad' } }),
-            /Invalid skills list/
-        );
-        assert.throws(
-            () => assertSafeBackupResourceNames({ plugins: { name: 'hooks', content: 'bad' } }),
-            /Invalid plugins list/
-        );
+        expect(
+            () => assertSafeBackupResourceNames({ skills: [{ name: '../escape', content: 'bad' }] })
+        ).toThrow(/Invalid skill name/);
+        expect(
+            () => assertSafeBackupResourceNames({ plugins: [{ name: '../escape', content: 'bad' }] })
+        ).toThrow(/Invalid plugin name/);
+        expect(
+            () => assertSafeBackupResourceNames({ skills: { name: 'debugging', content: 'bad' } })
+        ).toThrow(/Invalid skills list/);
+        expect(
+            () => assertSafeBackupResourceNames({ plugins: { name: 'hooks', content: 'bad' } })
+        ).toThrow(/Invalid plugins list/);
     });
 });

@@ -290,5 +290,8 @@ module.exports = {
     getLinkedProfiles,
     markSynced,
     getProfileDir,
-    getLinkedSourceFileName
+    getLinkedSourceFileName,
+    PROFILES_DIR,
+    OPENCODE_DIR,
+    isSymlink
 };

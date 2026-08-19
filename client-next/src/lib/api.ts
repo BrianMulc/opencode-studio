@@ -442,6 +442,17 @@ export async function deleteCommand(name: string): Promise<void> {
   }
 }
 
+export interface BackupFileEntry {
+  path: string;
+  content: string;
+  encoding?: 'base64';
+}
+
+export interface BackupDirTree {
+  files: BackupFileEntry[];
+  skipped?: { path: string; reason: string }[];
+}
+
 export interface BackupData {
   version: number;
   timestamp: string;
@@ -449,6 +460,11 @@ export interface BackupData {
   opencodeConfig: OpencodeConfig | null;
   skills: { name: string; content: string }[];
   plugins: { name: string; content: string }[];
+  // v2: whole-tree snapshots (absent in v1 backups)
+  activeProfile?: string | null;
+  configDir?: BackupDirTree | null;
+  profiles?: Record<string, BackupDirTree>;
+  studioDir?: BackupDirTree;
 }
 
 export async function getBackup(): Promise<BackupData> {

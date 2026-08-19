@@ -230,7 +230,7 @@ const [systemPrompt, setSystemPrompt] = useState("");
       const content = await file.text();
       const backup = JSON.parse(content) as BackupData;
       
-      if (!backup.version || backup.version !== 1) {
+      if (!backup.version || backup.version < 1 || backup.version > 2) {
         toast.error(t('toast.invalidBackupFormat'));
         return;
       }
