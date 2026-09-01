@@ -30,18 +30,22 @@ mkdir -p "$APP_DIR/usr/share/opencode-studio/app" \
          "$OUTPUT_DIR"
 
 # Copy the app source + prebuilt client + npm dependencies into the AppImage.
-rsync -a --delete \
-    --exclude='.git/' \
-    --exclude='.github/' \
-    --exclude='installer/' \
-    --exclude='vendor/' \
-    --exclude='.changeset/' \
-    --exclude='.sisyphus/' \
-    --exclude='.omo/' \
-    --exclude='client-next/.next/cache/' \
-    --exclude='**/.DS_Store' \
-    --exclude='*.log' \
-    "$ROOT_DIR/" "$APP_DIR/usr/share/opencode-studio/app/"
+# Use tar (available on minimal runners) instead of rsync.
+(
+    cd "$ROOT_DIR"
+    tar \
+        --exclude='./.git' \
+        --exclude='./.github' \
+        --exclude='./installer' \
+        --exclude='./vendor' \
+        --exclude='./.changeset' \
+        --exclude='./.sisyphus' \
+        --exclude='./.omo' \
+        --exclude='./client-next/.next/cache' \
+        --exclude='*/.DS_Store' \
+        --exclude='*.log' \
+        -cf - .
+) | tar -xf - -C "$APP_DIR/usr/share/opencode-studio/app"
 
 # Bundle a portable Node.js runtime so users do not need Node/npm installed.
 NODE_TARBALL="$STAGE_ROOT/node-runtime.tar.xz"
