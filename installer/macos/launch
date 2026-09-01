@@ -1,0 +1,28 @@
+#!/bin/bash
+# OpenCode Studio - silent macOS launcher for the self-contained .app bundle.
+set -e
+
+CONTENTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APP_ROOT="$CONTENTS_DIR/Resources/app"
+NODE_BIN="$CONTENTS_DIR/Resources/runtime/nodejs/bin/node"
+FRONTEND_URL="http://localhost:1080"
+LOCK_FILE="$HOME/.config/opencode-studio/server.lock.json"
+
+export PATH="$CONTENTS_DIR/Resources/runtime/nodejs/bin:$PATH"
+
+if [ ! -x "$NODE_BIN" ]; then
+    /usr/bin/osascript -e 'display alert "OpenCode Studio is damaged or incomplete." message "The bundled Node.js runtime was not found. Please download the DMG again."' as critical >/dev/null 2>&1 || true
+    exit 1
+fi
+
+# If an instance is already running, just focus/open the UI.
+if /usr/bin/curl -fsS -o /dev/null --max-time 2 "$FRONTEND_URL" 2>/dev/null; then
+    /usr/bin/open "$FRONTEND_URL"
+    exit 0
+fi
+
+# Remove stale lock files left behind by an unclean shutdown.
+rm -f "$LOCK_FILE"
+
+cd "$APP_ROOT/server"
+exec "$NODE_BIN" index.js

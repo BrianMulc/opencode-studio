@@ -50,22 +50,19 @@ The app updates itself (Settings → Updates), so you only ever install once. A 
 <details>
 <summary><strong>macOS</strong></summary>
 
-1. **Download** — Go to the [latest release page](https://github.com/BrianMulc/opencode-studio/releases/latest) and click the `.zip` file under "Assets" to download it
-2. **Unzip** — Find the downloaded ZIP file and double-click it to extract
-3. **Install** — Open the extracted folder. Then:
-   - Open **Terminal** (press `Cmd + Space`, type "Terminal", press Enter)
-   - Drag the `Install-OpenCode-Studio-Mac.command` file into the Terminal window and press Enter
-   - If prompted, type your Mac password and press Enter (characters won't show — this is normal)
-   - Wait for the installation to complete
+**Download OpenCode Studio for macOS:**
+
+- [Apple Silicon (M1/M2/M3/M4)](https://github.com/BrianMulc/opencode-studio/releases/latest/download/OpenCodeStudio-macOS-arm64.dmg)
+- [Intel Macs](https://github.com/BrianMulc/opencode-studio/releases/latest/download/OpenCodeStudio-macOS-x64.dmg)
+
+1. **Download** the DMG for your Mac using the links above (or from the [latest release page](https://github.com/BrianMulc/opencode-studio/releases/latest))
+2. **Open** the downloaded `.dmg`
+3. **Drag** `OpenCode Studio.app` onto the `Applications` shortcut
 4. **Launch** — Open **OpenCode Studio** from /Applications, Launchpad, or Spotlight
    - Your web browser will open automatically — no terminal windows will appear
 5. **To stop** — Just close the browser tab. Everything shuts down automatically.
 
-> **Note**: On first launch, macOS may show "OpenCode Studio cannot be opened because it is from an unidentified developer." To fix this:
-> 1. Right-click (or Control-click) **OpenCode Studio** in /Applications
-> 2. Select **"Open"** from the menu
-> 3. Click **"Open"** in the dialog that appears
-> 4. After this, it will open normally in the future
+> **Note**: If the DMG is not signed/notarized with an Apple Developer ID, macOS may still show "OpenCode Studio cannot be opened because it is from an unidentified developer" on first launch. Right-click (or Control-click) **OpenCode Studio** in /Applications → **Open** → **Open** once. Signed/notarized releases skip this prompt.
 
 </details>
 
