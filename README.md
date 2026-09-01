@@ -53,7 +53,8 @@ The app updates itself (Settings → Updates), so you only ever install once. A 
 **Download OpenCode Studio for macOS:**
 
 - [Apple Silicon (M1/M2/M3/M4)](https://github.com/BrianMulc/opencode-studio/releases/latest/download/OpenCodeStudio-macOS-arm64.dmg)
-- [Intel Macs](https://github.com/BrianMulc/opencode-studio/releases/latest/download/OpenCodeStudio-macOS-x64.dmg)
+
+> Intel Macs: the one-click DMG currently targets Apple Silicon. Use the npm/manual option below for Intel until a separate Intel build is available.
 
 1. **Download** the DMG for your Mac using the links above (or from the [latest release page](https://github.com/BrianMulc/opencode-studio/releases/latest))
 2. **Open** the downloaded `.dmg`

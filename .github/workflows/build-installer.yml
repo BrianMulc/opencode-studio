@@ -109,15 +109,7 @@ jobs:
           if-no-files-found: error
 
   build-macos-dmg:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: arm64
-            runner: macos-latest
-          - arch: x64
-            runner: macos-13
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -160,15 +152,15 @@ jobs:
         shell: bash
         run: |
           chmod +x installer/macos/build-dmg.sh
-          ./installer/macos/build-dmg.sh "$APP_VERSION" "${{ matrix.arch }}" "$NODE_RUNTIME_VERSION"
+          ./installer/macos/build-dmg.sh "$APP_VERSION" "arm64" "$NODE_RUNTIME_VERSION"
 
       - name: Upload macOS DMG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-dmg-${{ matrix.arch }}
+          name: macos-dmg-arm64
           path: |
-            installer/Output-macos/OpenCodeStudio-macOS-${{ matrix.arch }}.dmg
-            installer/Output-macos/OpenCodeStudio-macOS-${{ matrix.arch }}.dmg.sha256
+            installer/Output-macos/OpenCodeStudio-macOS-arm64.dmg
+            installer/Output-macos/OpenCodeStudio-macOS-arm64.dmg.sha256
           if-no-files-found: error
 
   release:
