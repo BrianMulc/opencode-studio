@@ -202,6 +202,12 @@ jobs:
         shell: bash
         run: npm run build --prefix client-next
 
+      - name: Install AppImage build tools
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y squashfs-tools desktop-file-utils
+
       - name: Build Linux AppImage
         shell: bash
         run: |
