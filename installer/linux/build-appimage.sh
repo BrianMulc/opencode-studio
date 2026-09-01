@@ -52,8 +52,8 @@ NODE_TARBALL="$STAGE_ROOT/node-runtime.tar.xz"
 NODE_URL="https://nodejs.org/dist/v$NODE_RUNTIME_VERSION/node-v$NODE_RUNTIME_VERSION-linux-$NODE_ARCH.tar.xz"
 echo "[Linux AppImage] Downloading $NODE_URL"
 curl -fL "$NODE_URL" -o "$NODE_TARBALL"
-tar -xJf "$NODE_TARBALL" -C "$RUNTIME_TMP" --strip-components 1
-cp -R "$RUNTIME_TMP/" "$APP_DIR/usr/share/opencode-studio/runtime/nodejs/"
+tar -xJf "$NODE_TARBALL" -C "$RUNTIME_TMP" --strip-components=1
+cp -R "$RUNTIME_TMP/." "$APP_DIR/usr/share/opencode-studio/runtime/nodejs/"
 "$APP_DIR/usr/share/opencode-studio/runtime/nodejs/bin/node" -v
 
 cp "$ROOT_DIR/installer/linux/AppRun" "$APP_DIR/AppRun"
