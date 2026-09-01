@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=OpenCode Studio
+Comment=Manage OpenCode configuration
+Exec=AppRun
+Icon=opencode-studio
+Categories=Utility;Development;
+Terminal=false
+StartupNotify=false

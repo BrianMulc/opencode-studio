@@ -17,7 +17,7 @@ If anything here does not match what you see, stop and contact IT. Include a scr
 You need:
 
 - A company computer with OpenCode installed. If you are not sure, ask IT.
-- Your API key, if your team gave you one.
+- Your API key from the company Battlemage console. If you do not know where to get it, ask IT.
 - To know which profile to use:
   - **Public data only** — for non-sensitive work.
   - **All data (private AI)** — for confidential work and anything that should stay on company infrastructure.
@@ -59,6 +59,20 @@ To stop the app later, close the browser tab.
 
 Intel Macs: use the advanced install option below or ask IT.
 
+### Linux
+
+1. Download the AppImage:
+   https://github.com/BrianMulc/opencode-studio/releases/latest/download/OpenCodeStudio-Linux-x86_64.AppImage
+2. Make the file executable. In most Linux file managers: right-click the file → **Properties** → **Permissions** → allow executing. If you cannot find that option, ask IT.
+3. Double-click the AppImage to open OpenCode Studio.
+4. If double-clicking does not work, ask IT. Tech-savvy users can run:
+   ```bash
+   chmod +x OpenCodeStudio-Linux-x86_64.AppImage
+   ./OpenCodeStudio-Linux-x86_64.AppImage
+   ```
+
+To stop the app later, close the browser tab.
+
 ---
 
 ## First-time setup
@@ -76,17 +90,21 @@ Intel Macs: use the advanced install option below or ask IT.
 7. Go to **Settings → Provider API Keys**.
 8. Enter your API key and save it.
 
-You should not need to edit **Raw Config**, **MCP Servers**, **Plugins**, **Skills**, or **Commands** unless IT asks you to.
+Most people should avoid **Raw Config**, **Plugins**, **Commands**, **Rules**, and **Code Settings** unless IT asks. The other pages are normal to use.
 
 ---
 
 ## Everyday use
 
-Most people only need the **Profiles** and **Settings** pages.
+The pages you will use most:
 
 - **Profiles** — switch between company setups. If your profile says **Linked**, it can receive catalog updates from the company server.
 - **Sync catalog** — updates the model list for a linked profile. Your API key is kept.
-- **Settings → Provider API Keys** — enter or replace your API key.
+- **Agents** — choose which OpenCode helper to use and what it is allowed to do.
+- **Permissions** — control what OpenCode may access or run. If you are unsure, use the company default or ask IT.
+- **Skills** — turn extra OpenCode abilities on or off.
+- **MCP Servers** — connect approved company tools. Only add or enable servers your company has approved.
+- **Settings → Provider API Keys** — enter or replace your Battlemage API key.
 - **Update Available** — if you see this in the sidebar, click it and let the app restart. Do not close the tab while it is updating.
 
 If you are asked to send information to IT, open **Logs**, then copy or screenshot the recent errors.
@@ -99,6 +117,7 @@ If you are asked to send information to IT, open **Logs**, then copy or screensh
 |---|---|
 | Windows warns about SmartScreen | Click **More info** → **Run anyway**. |
 | Mac says the app is from an unidentified developer | Right-click the app → **Open** → **Open**. |
+| Linux will not open the AppImage | Make sure the file is allowed to run as a program (Properties → Permissions), then try again. If it mentions FUSE, ask IT. |
 | Sidebar says **Disconnected** | Click **Restart Backend** once. If it still fails, contact IT. |
 | Profile sync fails | Check that you are on the company network/VPN/tailnet if required, then try again. If it still fails, contact IT. |
 | You are asked to run `npm` commands | This usually means the installed app did not start correctly. Contact IT unless you were specifically told to use the advanced install. |

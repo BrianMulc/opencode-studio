@@ -1,0 +1,34 @@
+#!/bin/bash
+# OpenCode Studio - silent Linux launcher for the self-contained AppImage.
+set -e
+
+HERE="$(dirname "$(readlink -f "$0")")"
+APP_ROOT="$HERE/usr/share/opencode-studio/app"
+NODE_BIN="$HERE/usr/share/opencode-studio/runtime/nodejs/bin/node"
+FRONTEND_URL="http://localhost:1080"
+LOCK_FILE="$HOME/.config/opencode-studio/server.lock.json"
+
+export PATH="$HERE/usr/share/opencode-studio/runtime/nodejs/bin:$PATH"
+export NEXT_TELEMETRY_DISABLED=1
+
+if [ ! -x "$NODE_BIN" ]; then
+    echo "OpenCode Studio is damaged or incomplete: bundled Node.js runtime was not found." >&2
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send "OpenCode Studio" "The bundled Node.js runtime was not found. Please download the AppImage again." || true
+    fi
+    exit 1
+fi
+
+# If an instance is already running, just open the UI.
+if curl -fsS -o /dev/null --max-time 2 "$FRONTEND_URL" 2>/dev/null; then
+    if command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "$FRONTEND_URL" >/dev/null 2>&1 || true
+    fi
+    exit 0
+fi
+
+# Remove stale lock files left behind by an unclean shutdown.
+rm -f "$LOCK_FILE"
+
+cd "$APP_ROOT/server"
+exec "$NODE_BIN" index.js

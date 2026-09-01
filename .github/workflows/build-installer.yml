@@ -163,8 +163,62 @@ jobs:
             installer/Output-macos/OpenCodeStudio-macOS-arm64.dmg.sha256
           if-no-files-found: error
 
+  build-linux-appimage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version and verify it matches package.json
+        id: version
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ "$tag" != v* ]]; then tag="${{ inputs.tag_name }}"; fi
+          if [[ -z "$tag" ]]; then echo 'No tag name available'; exit 1; fi
+          version="${tag#v}"
+          pkg_version="$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' package.json | head -n 1)"
+          echo "Tag: $tag -> version $version | package.json: $pkg_version"
+          if [[ "$version" != "$pkg_version" ]]; then
+            echo "Tag version ($version) does not match package.json version ($pkg_version). Bump the version first."
+            exit 1
+          fi
+          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: |
+            server/package-lock.json
+            client-next/package-lock.json
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          npm ci --prefix server
+          npm ci --prefix client-next
+
+      - name: Build client (production)
+        shell: bash
+        run: npm run build --prefix client-next
+
+      - name: Build Linux AppImage
+        shell: bash
+        run: |
+          chmod +x installer/linux/build-appimage.sh
+          ./installer/linux/build-appimage.sh "$APP_VERSION" "$NODE_RUNTIME_VERSION"
+
+      - name: Upload Linux AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage-x86_64
+          path: |
+            installer/Output-linux/OpenCodeStudio-Linux-x86_64.AppImage
+            installer/Output-linux/OpenCodeStudio-Linux-x86_64.AppImage.sha256
+          if-no-files-found: error
+
   release:
-    needs: [build-windows-installer, build-macos-dmg]
+    needs: [build-windows-installer, build-macos-dmg, build-linux-appimage]
     runs-on: ubuntu-latest
     steps:
       - name: Download release artifacts
@@ -182,3 +236,5 @@ jobs:
             release-artifacts/OpenCodeStudio-Setup.exe
             release-artifacts/OpenCodeStudio-macOS-*.dmg
             release-artifacts/OpenCodeStudio-macOS-*.dmg.sha256
+            release-artifacts/OpenCodeStudio-Linux-*.AppImage
+            release-artifacts/OpenCodeStudio-Linux-*.AppImage.sha256
