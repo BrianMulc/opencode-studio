@@ -101,6 +101,37 @@ function validateProfileName(name) {
     return { valid: true };
 }
 
+// Guard for profile names that must already exist (delete/activate/rename
+// source/linked-source lookups). validateProfileName() rejects existing names,
+// so this checks filesystem safety only: no separators, traversal sequences,
+// or reserved names, and the resolved path must stay inside PROFILES_DIR.
+function assertSafeExistingProfileName(name) {
+    if (!name || typeof name !== 'string') {
+        throw new Error('Profile name is required');
+    }
+    const trimmed = name.trim();
+    if (trimmed.length === 0) {
+        throw new Error('Profile name cannot be empty');
+    }
+    if (trimmed === '.' || trimmed === '..') {
+        throw new Error('Invalid profile name');
+    }
+    if (/[/\\:*?"<>|]/.test(trimmed)) {
+        throw new Error('Invalid profile name');
+    }
+    if (!/^[a-zA-Z0-9._-]+$/.test(trimmed)) {
+        throw new Error('Invalid profile name');
+    }
+    if (WINDOWS_RESERVED_NAMES.has(trimmed.toUpperCase())) {
+        throw new Error('Invalid profile name');
+    }
+    const target = path.resolve(PROFILES_DIR, trimmed);
+    if (path.dirname(target) !== path.resolve(PROFILES_DIR)) {
+        throw new Error('Invalid profile name');
+    }
+    return trimmed;
+}
+
 function createProfile(name) {
     const validation = validateProfileName(name);
     if (!validation.valid) {
@@ -135,7 +166,8 @@ function createProfileWithConfig(name, configObject) {
 const LINKED_SOURCE_FILE = '.ocs-linked-source.json';
 
 function writeLinkedSource(name, source) {
-    const dir = path.join(PROFILES_DIR, name);
+    const safe = assertSafeExistingProfileName(name);
+    const dir = path.join(PROFILES_DIR, safe);
     if (!fs.existsSync(dir)) throw new Error('Profile not found');
     const markerPath = path.join(dir, LINKED_SOURCE_FILE);
     const tmpPath = `${markerPath}.${Date.now()}.tmp`;
@@ -147,7 +179,8 @@ function writeLinkedSource(name, source) {
 
 function readLinkedSource(name) {
     try {
-        const markerPath = path.join(PROFILES_DIR, name, LINKED_SOURCE_FILE);
+        const safe = assertSafeExistingProfileName(name);
+        const markerPath = path.join(PROFILES_DIR, safe, LINKED_SOURCE_FILE);
         if (!fs.existsSync(markerPath)) return null;
         return JSON.parse(fs.readFileSync(markerPath, 'utf8'));
     } catch {
@@ -182,18 +215,19 @@ function markSynced(name, result) {
 
 // Paths used by the linked-profile sync in index.js
 function getProfileDir(name) {
-    return path.join(PROFILES_DIR, name);
+    return path.join(PROFILES_DIR, assertSafeExistingProfileName(name));
 }
 function getLinkedSourceFileName() {
     return LINKED_SOURCE_FILE;
 }
 
 function deleteProfile(name) {
+    const safe = assertSafeExistingProfileName(name);
     const { active } = listProfiles();
-    if (name === active) throw new Error('Cannot delete active profile');
-    if (name === 'default') throw new Error('Cannot delete default profile');
-    
-    const dir = path.join(PROFILES_DIR, name);
+    if (safe === active) throw new Error('Cannot delete active profile');
+    if (safe === 'default') throw new Error('Cannot delete default profile');
+
+    const dir = path.join(PROFILES_DIR, safe);
     if (fs.existsSync(dir)) {
         fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -201,7 +235,8 @@ function deleteProfile(name) {
 }
 
 function activateProfile(name) {
-    const target = path.join(PROFILES_DIR, name);
+    const safe = assertSafeExistingProfileName(name);
+    const target = path.join(PROFILES_DIR, safe);
     if (!fs.existsSync(target)) throw new Error('Profile not found');
     
     if (fs.existsSync(OPENCODE_DIR)) {
@@ -213,12 +248,13 @@ function activateProfile(name) {
 }
 
 function duplicateProfile(sourceName, newName) {
+    const safeSource = assertSafeExistingProfileName(sourceName);
     const validation = validateProfileName(newName);
     if (!validation.valid) {
         throw new Error(validation.error);
     }
 
-    const sourceDir = path.join(PROFILES_DIR, sourceName);
+    const sourceDir = path.join(PROFILES_DIR, safeSource);
     if (!fs.existsSync(sourceDir)) {
         throw new Error('Source profile not found');
     }
@@ -230,13 +266,14 @@ function duplicateProfile(sourceName, newName) {
 }
 
 function renameProfile(oldName, newName) {
+    const safeOld = assertSafeExistingProfileName(oldName);
     const validation = validateProfileName(newName);
     if (!validation.valid) {
         throw new Error(validation.error);
     }
 
     const trimmedNew = newName.trim();
-    const oldDir = path.join(PROFILES_DIR, oldName);
+    const oldDir = path.join(PROFILES_DIR, safeOld);
     const newDir = path.join(PROFILES_DIR, trimmedNew);
 
     if (!fs.existsSync(oldDir)) {
@@ -245,7 +282,7 @@ function renameProfile(oldName, newName) {
 
     // Check if profile is currently active (symlink points to it)
     const { active } = listProfiles();
-    const isActive = active === oldName;
+    const isActive = active === safeOld;
 
     // If active, update junction symlink FIRST, then rename directory
     if (isActive) {
@@ -283,6 +320,7 @@ module.exports = {
     deleteProfile,
     activateProfile,
     validateProfileName,
+    assertSafeExistingProfileName,
     duplicateProfile,
     renameProfile,
     writeLinkedSource,

@@ -50,7 +50,7 @@ const isOhMyOpenAgentPluginEnabled = (activeConfigDir) => {
     const configPath = path.join(activeConfigDir, 'opencode.json');
     if (!fs.existsSync(configPath)) return false;
     try {
-        const content = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        const content = configProviders.loadConfigFileSync(configPath);
         if (!Array.isArray(content.plugin)) return false;
         return content.plugin.some((p) =>
             typeof p === 'string' && p.startsWith('oh-my-openagent')
@@ -70,7 +70,7 @@ const aggregateAgents = ({ roots = [], agentDirs = [], activeConfigDir = null } 
         const configPath = path.join(root, 'opencode.json');
         if (fs.existsSync(configPath)) {
             try {
-                const content = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+                const content = configProviders.loadConfigFileSync(configPath);
                 const configAgents = content.agent || {};
                 for (const [name, agentConfig] of Object.entries(configAgents)) {
                     if (!agentMap.has(name)) {

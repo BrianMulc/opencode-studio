@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const configProviders = require('./config-providers');
 
 // Providers that are known to be local (data never leaves the machine).
 // Users can override this list via the modelPolicy config in opencode.json.
@@ -199,8 +200,7 @@ export const DelegationGuardPlugin = async ({ project, client, $, directory, wor
     for (const p of candidates) {
       try {
         if (fs.existsSync(p)) {
-          const raw = fs.readFileSync(p, 'utf8');
-          return JSON.parse(raw.replace(/\\/\\/.*$/gm, '').replace(/\\/\\*[\\s\\S]*?\\*\\//g, ''));
+          return configProviders.loadConfigFileSync(p);
         }
       } catch {}
     }

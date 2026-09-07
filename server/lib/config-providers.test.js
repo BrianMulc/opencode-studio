@@ -50,6 +50,25 @@ describe('config provider seams', () => {
         expect(errors).toEqual([]);
     });
 
+    it('loads jsonc config files with comments and trailing commas', () => {
+        const tempDir = makeTempDir();
+        const configPath = path.join(tempDir, 'opencode.jsonc');
+        fs.writeFileSync(configPath, [
+            '{',
+            '  // OpenCode accepts comments in its JSONC config.',
+            '  "provider": {',
+            '    "ascend": {',
+            '      "reasoning": true,',
+            '    },',
+            '  },',
+            '}',
+        ].join('\n'));
+
+        expect(providers.loadConfigFileSync(configPath)).toEqual({
+            provider: { ascend: { reasoning: true } },
+        });
+    });
+
     it('preserves unknown keys as raw text through atomic writes', () => {
         const tempDir = makeTempDir();
         const targetPath = path.join(tempDir, 'config.json');
