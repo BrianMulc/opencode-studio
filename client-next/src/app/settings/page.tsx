@@ -611,6 +611,36 @@ const [systemPrompt, setSystemPrompt] = useState("");
                   />
                   <p className="text-xs text-muted-foreground">{t('advanced.enabledProvidersDescription')}</p>
                 </div>
+
+                <div className="space-y-2">
+                  <Label>{t('advanced.logLevel')}</Label>
+                  <Select
+                    value={config?.logLevel || ""}
+                    onValueChange={(v) => updateConfig({ logLevel: (v || undefined) as OpencodeConfig['logLevel'] })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="INFO" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {["DEBUG", "INFO", "WARN", "ERROR"].map((level) => (
+                        <SelectItem key={level} value={level}>{level}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">{t('advanced.logLevelDescription')}</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{t('advanced.subagentDepth')}</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={config?.subagent_depth ?? ""}
+                    onChange={(e) => updateConfig({ subagent_depth: e.target.value ? Number(e.target.value) : undefined })}
+                    placeholder="1"
+                  />
+                  <p className="text-xs text-muted-foreground">{t('advanced.subagentDepthDescription')}</p>
+                </div>
               </div>
 
               <div className="space-y-4 pt-4 border-t">
@@ -647,6 +677,53 @@ const [systemPrompt, setSystemPrompt] = useState("");
                         placeholder="10000"
                       />
                     </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm">{t('advanced.compactionTailTurns')}</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={config?.compaction?.tail_turns ?? ""}
+                        onChange={(e) => updateConfig({ compaction: { ...config?.compaction, tail_turns: e.target.value ? Number(e.target.value) : undefined } })}
+                      />
+                      <p className="text-xs text-muted-foreground">{t('advanced.compactionTailTurnsDescription')}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm">{t('advanced.compactionPreserveTokens')}</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={config?.compaction?.preserve_recent_tokens ?? ""}
+                        onChange={(e) => updateConfig({ compaction: { ...config?.compaction, preserve_recent_tokens: e.target.value ? Number(e.target.value) : undefined } })}
+                      />
+                      <p className="text-xs text-muted-foreground">{t('advanced.compactionPreserveTokensDescription')}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2 pt-4 border-t">
+                <Label>{t('advanced.toolOutputTitle')}</Label>
+                <p className="text-xs text-muted-foreground">{t('advanced.toolOutputDescription')}</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm">{t('advanced.toolOutputMaxLines')}</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={config?.tool_output?.max_lines ?? ""}
+                      onChange={(e) => updateConfig({ tool_output: { ...config?.tool_output, max_lines: e.target.value ? Number(e.target.value) : undefined } })}
+                      placeholder="2000"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm">{t('advanced.toolOutputMaxBytes')}</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={config?.tool_output?.max_bytes ?? ""}
+                      onChange={(e) => updateConfig({ tool_output: { ...config?.tool_output, max_bytes: e.target.value ? Number(e.target.value) : undefined } })}
+                      placeholder="51200"
+                    />
                   </div>
                 </div>
               </div>

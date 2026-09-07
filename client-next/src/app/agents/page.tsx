@@ -84,6 +84,7 @@ interface AgentFormState {
   description: string;
   mode: AgentConfig["mode"];
   model: string;
+  variant: string;
   temperature: number;
   top_p: number;
   color: string;
@@ -102,6 +103,7 @@ const emptyForm = (): AgentFormState => ({
   description: "",
   mode: "subagent",
   model: "",
+  variant: "",
   temperature: 0.3,
   top_p: 0,
   color: "",
@@ -165,6 +167,7 @@ export default function AgentsPage() {
       description: agent.description || "",
       mode: agent.mode || "subagent",
       model: agent.model || "",
+      variant: agent.variant || "",
       temperature: agent.temperature ?? 0.3,
       top_p: agent.top_p ?? 0,
       color: agent.color || "",
@@ -192,6 +195,7 @@ export default function AgentsPage() {
       description: form.description || undefined,
       mode: form.mode || "subagent",
       model: form.model || undefined,
+      variant: form.variant || undefined,
       temperature: form.temperature,
       top_p: form.top_p || undefined,
       color: form.color || undefined,
@@ -257,6 +261,7 @@ export default function AgentsPage() {
       description: agent.description || "",
       mode: agent.mode || "subagent",
       model: agent.model || "",
+      variant: agent.variant || "",
       temperature: agent.temperature ?? 0.3,
       top_p: agent.top_p ?? 0,
       color: agent.color || "",
@@ -283,6 +288,7 @@ export default function AgentsPage() {
         description: c.description || '',
         mode: (c.mode as AgentConfig["mode"]) || 'subagent',
         model: c.model || '',
+        variant: c.variant || '',
         temperature: c.temperature ?? 0.3,
         color: c.color || '',
         permission: c.permission || { "*": "ask" },
@@ -308,6 +314,7 @@ export default function AgentsPage() {
       description: form.description,
       mode: form.mode || "subagent",
       model: form.model,
+      variant: form.variant || undefined,
       temperature: form.temperature,
       color: form.color,
       permission: form.permission,
@@ -419,6 +426,14 @@ export default function AgentsPage() {
                     value={form.model}
                     onChange={(e) => setForm((prev) => ({ ...prev, model: e.target.value }))}
                     placeholder="anthropic/claude-sonnet-4-20250514"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t('variantLabel')}</Label>
+                  <Input
+                    value={form.variant}
+                    onChange={(e) => setForm((prev) => ({ ...prev, variant: e.target.value }))}
+                    placeholder={t('variantPlaceholder')}
                   />
                 </div>
                 <div className="space-y-2">

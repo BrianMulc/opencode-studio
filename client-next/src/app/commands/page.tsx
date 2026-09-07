@@ -27,12 +27,107 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Plus, Trash, Edit, Command, Logout } from "@nsmr/pixelart-react";
+import { Switch } from "@/components/ui/switch";
 import { PageHelp } from "@/components/page-help";
 import { toast } from "sonner";
+import type { CommandConfig } from "@/types";
 
 interface CommandEntry {
   name: string;
   template: string;
+  description?: string;
+  agent?: string;
+  model?: string;
+  variant?: string;
+  subtask?: boolean;
+}
+
+type CommandFormState = Omit<CommandEntry, 'name'>;
+
+const emptyCommandForm = (): CommandFormState => ({
+  template: "",
+  description: "",
+  agent: "",
+  model: "",
+  variant: "",
+  subtask: false,
+});
+
+const toEntry = (name: string, value: CommandConfig): CommandEntry => ({
+  name,
+  template: value.template,
+  ...(value.description && { description: value.description }),
+  ...(value.agent && { agent: value.agent }),
+  ...(value.model && { model: value.model }),
+  ...(value.variant && { variant: value.variant }),
+  ...(value.subtask !== undefined && { subtask: value.subtask }),
+});
+
+const toSavePayload = (form: CommandFormState): CommandConfig => {
+  const payload: CommandConfig = { template: form.template };
+  if (form.description?.trim()) payload.description = form.description.trim();
+  if (form.agent?.trim()) payload.agent = form.agent.trim();
+  if (form.model?.trim()) payload.model = form.model.trim();
+  if (form.variant?.trim()) payload.variant = form.variant.trim();
+  if (form.subtask) payload.subtask = true;
+  return payload;
+};
+
+function CommandExtraFields({ form, onChange, t }: {
+  form: CommandFormState;
+  onChange: (patch: Partial<CommandFormState>) => void;
+  t: (key: string) => string;
+}) {
+  return (
+    <>
+      <div className="space-y-2">
+        <Label>{t('description')}</Label>
+        <Input
+          value={form.description || ""}
+          onChange={(e) => onChange({ description: e.target.value })}
+          placeholder={t('descriptionPlaceholder')}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>{t('agent')}</Label>
+          <Input
+            value={form.agent || ""}
+            onChange={(e) => onChange({ agent: e.target.value })}
+            placeholder={t('agentPlaceholder')}
+            className="font-mono text-sm"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>{t('model')}</Label>
+          <Input
+            value={form.model || ""}
+            onChange={(e) => onChange({ model: e.target.value })}
+            placeholder={t('modelPlaceholder')}
+            className="font-mono text-sm"
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>{t('variant')}</Label>
+          <Input
+            value={form.variant || ""}
+            onChange={(e) => onChange({ variant: e.target.value })}
+            placeholder={t('variantPlaceholder')}
+            className="font-mono text-sm"
+          />
+        </div>
+        <div className="flex items-center justify-between p-3 bg-background rounded-lg self-end">
+          <Label className="text-sm">{t('subtask')}</Label>
+          <Switch
+            checked={form.subtask === true}
+            onCheckedChange={(v) => onChange({ subtask: v })}
+          />
+        </div>
+      </div>
+    </>
+  );
 }
 
 export default function CommandsPage() {
@@ -41,9 +136,9 @@ export default function CommandsPage() {
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newTemplate, setNewTemplate] = useState("");
+  const [newCommand, setNewCommand] = useState<CommandFormState>(emptyCommandForm);
   const [editOpen, setEditOpen] = useState(false);
-  const [editingCmd, setEditingCmd] = useState<{ originalName: string, name: string, template: string } | null>(null);
+  const [editingCmd, setEditingCmd] = useState<{ originalName: string, name: string } & CommandFormState | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
@@ -51,10 +146,7 @@ export default function CommandsPage() {
     try {
       setLoading(true);
       const data = await getCommands();
-      const entries = Object.entries(data).map(([name, value]) => ({
-        name,
-        template: value.template,
-      }));
+      const entries = Object.entries(data).map(([name, value]) => toEntry(name, value));
       setCommands(entries);
     } catch (err: any) {
       toast.error(t('loadFailed'));
@@ -73,7 +165,7 @@ export default function CommandsPage() {
       toast.error(t('nameRequired'));
       return;
     }
-    if (!newTemplate.trim()) {
+    if (!newCommand.template.trim()) {
       toast.error(t('templateRequired'));
       return;
     }
@@ -83,10 +175,10 @@ export default function CommandsPage() {
     }
 
     try {
-      await saveCommand(newName.trim(), newTemplate);
+      await saveCommand(newName.trim(), toSavePayload({ ...newCommand, template: newCommand.template.trim() }));
       toast.success(t('createSuccess', { name: newName }));
       setNewName("");
-      setNewTemplate("");
+      setNewCommand(emptyCommandForm());
       setAddOpen(false);
       fetchCommands();
     } catch {
@@ -117,7 +209,7 @@ export default function CommandsPage() {
       if (editingCmd.name !== editingCmd.originalName) {
         await deleteCommand(editingCmd.originalName);
       }
-      await saveCommand(editingCmd.name.trim(), editingCmd.template);
+      await saveCommand(editingCmd.name.trim(), toSavePayload({ ...editingCmd, template: editingCmd.template.trim() }));
       toast.success(t('updateSuccess', { name: editingCmd.name }));
       setEditOpen(false);
       setEditingCmd(null);
@@ -150,7 +242,12 @@ export default function CommandsPage() {
     setEditingCmd({
       originalName: cmd.name,
       name: cmd.name,
-      template: cmd.template
+      template: cmd.template,
+      description: cmd.description || "",
+      agent: cmd.agent || "",
+      model: cmd.model || "",
+      variant: cmd.variant || "",
+      subtask: cmd.subtask || false,
     });
     setEditOpen(true);
   };
@@ -202,8 +299,8 @@ export default function CommandsPage() {
                 <Label htmlFor="cmd-template">{t('template')}</Label>
                 <Textarea
                   id="cmd-template"
-                  value={newTemplate}
-                  onChange={(e) => setNewTemplate(e.target.value)}
+                  value={newCommand.template}
+                  onChange={(e) => setNewCommand((prev) => ({ ...prev, template: e.target.value }))}
                   placeholder={t('templatePlaceholder')}
                   className="font-mono text-sm min-h-[200px]"
                 />
@@ -211,6 +308,7 @@ export default function CommandsPage() {
                   {t('templateHint')}
                 </p>
               </div>
+              <CommandExtraFields form={newCommand} onChange={(patch) => setNewCommand((prev) => ({ ...prev, ...patch }))} t={t} />
               <div className="flex justify-end gap-2">
                 <Button variant="ghost" onClick={() => setAddOpen(false)}>
                   {t('cancel')}
@@ -249,6 +347,9 @@ export default function CommandsPage() {
                   {t('templateHint')}
                 </p>
               </div>
+              {editingCmd && (
+                <CommandExtraFields form={editingCmd} onChange={(patch) => setEditingCmd(prev => prev ? { ...prev, ...patch } : null)} t={t} />
+              )}
               <div className="flex justify-end gap-2">
                 <Button variant="ghost" onClick={() => setEditOpen(false)}>
                   {t('cancel')}
@@ -293,6 +394,25 @@ export default function CommandsPage() {
                 </div>
               </CardHeader>
               <CardContent>
+                {(cmd.description || cmd.agent || cmd.model || cmd.variant || cmd.subtask) && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {cmd.description && (
+                      <span className="text-xs text-muted-foreground">{cmd.description}</span>
+                    )}
+                    {cmd.agent && (
+                      <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded">agent: {cmd.agent}</span>
+                    )}
+                    {cmd.model && (
+                      <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded">{cmd.model}</span>
+                    )}
+                    {cmd.variant && (
+                      <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded">#{cmd.variant}</span>
+                    )}
+                    {cmd.subtask && (
+                      <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded">subtask</span>
+                    )}
+                  </div>
+                )}
                 <pre className="text-sm text-muted-foreground whitespace-pre-wrap font-mono bg-background p-3 rounded-md max-h-32 overflow-auto">
                   {cmd.template}
                 </pre>

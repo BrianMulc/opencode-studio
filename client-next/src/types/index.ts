@@ -1,19 +1,23 @@
+export interface McpOAuthConfig {
+  clientId?: string;
+  clientSecret?: string;
+  scope?: string;
+  callbackPort?: number;
+  redirectUri?: string;
+}
+
 export interface MCPConfig {
   command?: string[];
   args?: string[];
   url?: string;
   env?: Record<string, string>;
   enabled: boolean;
-  type: 'local' | 'sse' | 'remote';
+  type: 'local' | 'remote';
   timeout?: number;
+  cwd?: string;
   environment?: Record<string, string>;
-  oauth?: {
-    clientId: string;
-    clientSecret?: string;
-    authorizationUrl: string;
-    tokenUrl: string;
-    scopes?: string[];
-  };
+  headers?: Record<string, string>;
+  oauth?: McpOAuthConfig | false;
 }
 
 export interface ModelAlias {
@@ -52,6 +56,7 @@ export type PermissionToolKey = keyof PermissionConfig;
 
 export interface AgentConfig {
   model?: string;
+  variant?: string;
   temperature?: number;
   top_p?: number;
   prompt?: string;
@@ -65,6 +70,7 @@ export interface AgentConfig {
   mode?: 'subagent' | 'primary' | 'all';
   disable?: boolean;
   hidden?: boolean;
+  options?: Record<string, unknown>;
 }
 
 export type AgentSource = 'json' | 'markdown' | 'builtin';
@@ -99,7 +105,7 @@ export interface ProviderOptions {
   setCacheKey?: boolean;
   timeout?: number | false;
   headerTimeout?: number | false;
-  chunkTimeout?: number;
+  chunkTimeout?: number | false;
 }
 
 export interface ProviderConfig {
@@ -364,6 +370,8 @@ export interface CompactionConfig {
   auto?: boolean;
   prune?: boolean;
   reserved?: number;
+  tail_turns?: number;
+  preserve_recent_tokens?: number;
 }
 
 export interface WatcherConfig {
@@ -402,7 +410,12 @@ export interface ExperimentalConfig {
   hooks?: HooksConfig;
   chatMaxRetries?: number;
   batch_tool?: boolean;
-  openTelemetry?: {
+  disable_paste_summary?: boolean;
+  primary_tools?: string[];
+  continue_loop_on_deny?: boolean;
+  mcp_timeout?: number;
+  policies?: { action: string; effect: 'allow' | 'deny'; resource: string }[];
+  openTelemetry?: boolean | {
     enabled?: boolean;
     endpoint?: string;
   };
@@ -413,6 +426,48 @@ export interface ModelConfig {
   providers?: Record<string, ProviderConfig>;
 }
 
+export interface ServerConfig {
+  port?: number;
+  hostname?: string;
+  mdns?: boolean;
+  mdnsDomain?: string;
+  cors?: string[];
+}
+
+export interface ToolOutputConfig {
+  max_lines?: number;
+  max_bytes?: number;
+}
+
+export interface AttachmentImageConfig {
+  auto_resize?: boolean;
+  max_width?: number;
+  max_height?: number;
+  max_base64_bytes?: number;
+}
+
+export interface AttachmentConfig {
+  image?: AttachmentImageConfig;
+}
+
+export interface EnterpriseConfig {
+  url?: string;
+}
+
+export interface SkillsConfig {
+  paths?: string[];
+  urls?: string[];
+}
+
+export interface CommandConfig {
+  template: string;
+  description?: string;
+  agent?: string;
+  model?: string;
+  variant?: string;
+  subtask?: boolean;
+}
+
 export interface OpencodeConfig {
   base_url?: string;
   theme?: 'dark' | 'light' | 'auto';
@@ -421,6 +476,9 @@ export interface OpencodeConfig {
   username?: string;
   autoupdate?: boolean | 'notify';
   share?: 'manual' | 'auto' | 'disabled';
+  logLevel?: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+  server?: ServerConfig;
+  subagent_depth?: number;
   default_agent?: string;
   snapshot?: boolean;
   shell?: string;
@@ -434,9 +492,14 @@ export interface OpencodeConfig {
   watcher?: WatcherConfig;
   lsp?: LSPConfig;
   formatter?: FormatterConfig;
-  command?: Record<string, { template: string }>;
+  command?: Record<string, CommandConfig>;
   plugin?: string[];
+  skills?: SkillsConfig;
+  references?: Record<string, string | { repository: string; branch?: string; description?: string; hidden?: boolean } | { path: string; description?: string; hidden?: boolean }>;
   instructions?: string[];
+  attachment?: AttachmentConfig;
+  enterprise?: EnterpriseConfig;
+  tool_output?: ToolOutputConfig;
   disabled_providers?: string[];
   enabled_providers?: string[];
   experimental?: ExperimentalConfig;

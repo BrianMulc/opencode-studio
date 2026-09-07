@@ -43,6 +43,7 @@ interface ProviderDraft {
   chunkTimeout: string;
   timeoutDisabled: boolean;
   headerTimeoutDisabled: boolean;
+  chunkTimeoutDisabled: boolean;
   setCacheKey: boolean;
   models: ModelDraft[];
 }
@@ -86,6 +87,7 @@ function emptyProvider(id = "custom-provider"): ProviderDraft {
     chunkTimeout: "",
     timeoutDisabled: false,
     headerTimeoutDisabled: false,
+    chunkTimeoutDisabled: false,
     setCacheKey: false,
     models: [emptyModel()],
   };
@@ -137,6 +139,7 @@ function providerDraftsFromConfig(config: OpencodeConfig): ProviderDraft[] {
       chunkTimeout: toNumberText(options.chunkTimeout),
       timeoutDisabled: options.timeout === false,
       headerTimeoutDisabled: options.headerTimeout === false,
+      chunkTimeoutDisabled: options.chunkTimeout === false,
       setCacheKey: options.setCacheKey === true,
       models: modelDraftsFromProvider(provider),
     };
@@ -239,7 +242,8 @@ function buildProviderConfig(provider: ProviderDraft): ProviderConfig {
   if (provider.headerTimeoutDisabled) options.headerTimeout = false;
   else if (headerTimeout !== undefined) options.headerTimeout = headerTimeout;
   else delete options.headerTimeout;
-  if (chunkTimeout !== undefined) options.chunkTimeout = chunkTimeout;
+  if (provider.chunkTimeoutDisabled) options.chunkTimeout = false;
+  else if (chunkTimeout !== undefined) options.chunkTimeout = chunkTimeout;
   else delete options.chunkTimeout;
   if (provider.setCacheKey) options.setCacheKey = true;
   else delete options.setCacheKey;
@@ -554,6 +558,7 @@ export function CustomProviderModelEditor({ config, onSave }: CustomProviderMode
                       type="number"
                       min="1"
                       value={provider.chunkTimeout}
+                      disabled={provider.chunkTimeoutDisabled}
                       onChange={(event) => updateProvider(providerIndex, { chunkTimeout: event.target.value })}
                       placeholder="30000"
                     />
@@ -574,6 +579,13 @@ export function CustomProviderModelEditor({ config, onSave }: CustomProviderMode
                       onCheckedChange={(checked) => updateProvider(providerIndex, { headerTimeoutDisabled: checked })}
                     />
                     {t("disableHeaderTimeout")}
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Switch
+                      checked={provider.chunkTimeoutDisabled}
+                      onCheckedChange={(checked) => updateProvider(providerIndex, { chunkTimeoutDisabled: checked })}
+                    />
+                    {t("disableChunkTimeout")}
                   </label>
                   <label className="flex items-center gap-2 text-sm">
                     <Switch

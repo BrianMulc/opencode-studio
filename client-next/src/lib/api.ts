@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { OpencodeConfig, SkillFile, PluginFile, SkillInfo, PluginInfo, AuthInfo, AuthProvider, StudioConfig, PluginModelsConfig, AuthProfilesInfo, Preset, PresetConfig, AgentConfig, AgentInfo, AgentsResponse, SystemToolInfo, RulesResponse, MCPConfig, OhMyPreferences, OhMyConfigResponse, GitHubBackupStatus, GitHubBackupResult, GitHubBackupConfig, ConfigProviderId, ConfigProviderCreatePayload, ConfigProviderCreateProfilePayload, ConfigProviderCreateProfileResult, ConfigProviderCreateResult, ConfigProviderDetail, ConfigProviderExportResult, ConfigProviderImportPayload, ConfigProviderImportResult, ConfigProviderProfilesResult, ConfigProviderSavePayload, ConfigProviderSaveResult, ConfigProviderSummary, ConfigProviderSwitchProfilePayload, ConfigProviderSwitchProfileResult, ConfigProviderValidationPayload, ConfigProviderValidationResult, ConfigProviderRevision, ConfigProviderProfile, PermissionConfig } from '@/types';
+import type { OpencodeConfig, SkillFile, PluginFile, SkillInfo, PluginInfo, AuthInfo, AuthProvider, StudioConfig, PluginModelsConfig, AuthProfilesInfo, Preset, PresetConfig, AgentConfig, AgentInfo, AgentsResponse, SystemToolInfo, RulesResponse, MCPConfig, OhMyPreferences, OhMyConfigResponse, GitHubBackupStatus, GitHubBackupResult, GitHubBackupConfig, ConfigProviderId, ConfigProviderCreatePayload, ConfigProviderCreateProfilePayload, ConfigProviderCreateProfileResult, ConfigProviderCreateResult, ConfigProviderDetail, ConfigProviderExportResult, ConfigProviderImportPayload, ConfigProviderImportResult, ConfigProviderProfilesResult, ConfigProviderSavePayload, ConfigProviderSaveResult, ConfigProviderSummary, ConfigProviderSwitchProfilePayload, ConfigProviderSwitchProfileResult, ConfigProviderValidationPayload, ConfigProviderValidationResult, ConfigProviderRevision, ConfigProviderProfile, PermissionConfig, CommandConfig } from '@/types';
 
 const BACKEND_BASE_PORT = 1920;
 const MAX_PORT_TRIES = 10;
@@ -218,6 +218,7 @@ export interface AgentPresetConfig {
   description: string;
   mode: string;
   model: string;
+  variant?: string;
   temperature: number;
   color: string;
   permission: PermissionConfig;
@@ -405,8 +406,8 @@ export async function getMcpServers(): Promise<Record<string, MCPConfig>> {
   return data;
 }
 
-export async function getCommands(): Promise<Record<string, { template: string }>> {
-  const { data } = await api.get<Record<string, { template: string }>>('/commands');
+export async function getCommands(): Promise<Record<string, CommandConfig>> {
+  const { data } = await api.get<Record<string, CommandConfig>>('/commands');
   return data;
 }
 
@@ -415,20 +416,24 @@ export async function getModels(): Promise<{ providers: any[]; models: any[] }> 
   return data;
 }
 
-export async function getCommand(name: string): Promise<{ template: string }> {
+export async function getCommand(name: string): Promise<CommandConfig> {
   const config = await getConfig();
   const cmd = config.command?.[name];
   if (!cmd) throw new Error('Command not found');
   return cmd;
 }
 
-export async function saveCommand(name: string, template: string): Promise<void> {
+export async function saveCommand(name: string, data: string | Partial<CommandConfig>): Promise<void> {
   const config = await getConfig();
+  const existing: Partial<CommandConfig> = config.command?.[name] ?? {};
+  const merged: Partial<CommandConfig> = typeof data === 'string' ? { ...existing, template: data } : { ...existing, ...data };
+  if (!merged.template) throw new Error('Command template is required');
+  const next: CommandConfig = { ...merged, template: merged.template };
   const updated = {
     ...config,
     command: {
         ...config.command,
-        [name]: { template }
+        [name]: next
     }
   };
   await saveConfig(updated);
