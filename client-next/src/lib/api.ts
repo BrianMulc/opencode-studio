@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { OpencodeConfig, SkillFile, PluginFile, SkillInfo, PluginInfo, AuthInfo, AuthProvider, StudioConfig, PluginModelsConfig, AuthProfilesInfo, Preset, PresetConfig, AgentConfig, AgentInfo, AgentsResponse, SystemToolInfo, RulesResponse, MCPConfig, OhMyPreferences, OhMyConfigResponse, GitHubBackupStatus, GitHubBackupResult, GitHubBackupConfig, ConfigProviderId, ConfigProviderCreatePayload, ConfigProviderCreateProfilePayload, ConfigProviderCreateProfileResult, ConfigProviderCreateResult, ConfigProviderDetail, ConfigProviderExportResult, ConfigProviderImportPayload, ConfigProviderImportResult, ConfigProviderProfilesResult, ConfigProviderSavePayload, ConfigProviderSaveResult, ConfigProviderSummary, ConfigProviderSwitchProfilePayload, ConfigProviderSwitchProfileResult, ConfigProviderValidationPayload, ConfigProviderValidationResult, ConfigProviderRevision, ConfigProviderProfile, PermissionConfig, CommandConfig } from '@/types';
+import type { OpencodeConfig, SkillFile, PluginFile, SkillInfo, PluginInfo, AuthInfo, AuthProvider, StudioConfig, PluginModelsConfig, AuthProfilesInfo, Preset, PresetConfig, AgentConfig, AgentInfo, AgentsResponse, SystemToolInfo, RulesResponse, MCPConfig, OhMyPreferences, OhMyConfigResponse, GitHubBackupStatus, GitHubBackupResult, GitHubBackupConfig, ConfigProviderId, ConfigProviderCreatePayload, ConfigProviderCreateProfilePayload, ConfigProviderCreateProfileResult, ConfigProviderCreateResult, ConfigProviderDetail, ConfigProviderExportResult, ConfigProviderImportPayload, ConfigProviderImportResult, ConfigProviderProfilesResult, ConfigProviderSavePayload, ConfigProviderSaveResult, ConfigProviderSummary, ConfigProviderSwitchProfilePayload, ConfigProviderSwitchProfileResult, ConfigProviderValidationPayload, ConfigProviderValidationResult, ConfigProviderRevision, ConfigProviderProfile, PermissionConfig, PermissionRule, CommandConfig, OpencodeVersionInfo, CliConfig } from '@/types';
 
 const BACKEND_BASE_PORT = 1920;
 const MAX_PORT_TRIES = 10;
@@ -221,7 +221,7 @@ export interface AgentPresetConfig {
   variant?: string;
   temperature: number;
   color: string;
-  permission: PermissionConfig;
+  permission: PermissionConfig | PermissionRule[];
   disable: boolean;
   hidden: boolean;
   prompt: string;
@@ -416,23 +416,40 @@ export async function getModels(): Promise<{ providers: any[]; models: any[] }> 
   return data;
 }
 
+export async function getOpencodeVersion(): Promise<OpencodeVersionInfo> {
+  const { data } = await api.get<OpencodeVersionInfo>('/opencode-version');
+  return data;
+}
+
+export async function getCliConfig(): Promise<{ exists: boolean; path: string | null; config: CliConfig }> {
+  const { data } = await api.get<{ exists: boolean; path: string | null; config: CliConfig }>('/cli-config');
+  return data;
+}
+
+export async function saveCliConfig(config: CliConfig): Promise<{ success: boolean; path: string }> {
+  const { data } = await api.post<{ success: boolean; path: string }>('/cli-config', { config });
+  return data;
+}
+
 export async function getCommand(name: string): Promise<CommandConfig> {
   const config = await getConfig();
-  const cmd = config.command?.[name];
+  const cmds = config.commands ?? config.command ?? {};
+  const cmd = cmds[name];
   if (!cmd) throw new Error('Command not found');
   return cmd;
 }
 
 export async function saveCommand(name: string, data: string | Partial<CommandConfig>): Promise<void> {
   const config = await getConfig();
-  const existing: Partial<CommandConfig> = config.command?.[name] ?? {};
+  const key = config.commands ? 'commands' : config.command ? 'command' : 'commands';
+  const existing: Partial<CommandConfig> = (config[key]?.[name] as Partial<CommandConfig>) ?? {};
   const merged: Partial<CommandConfig> = typeof data === 'string' ? { ...existing, template: data } : { ...existing, ...data };
   if (!merged.template) throw new Error('Command template is required');
   const next: CommandConfig = { ...merged, template: merged.template };
   const updated = {
     ...config,
-    command: {
-        ...config.command,
+    [key]: {
+        ...config[key],
         [name]: next
     }
   };
@@ -441,10 +458,16 @@ export async function saveCommand(name: string, data: string | Partial<CommandCo
 
 export async function deleteCommand(name: string): Promise<void> {
   const config = await getConfig();
-  if (config.command) {
-      const { [name]: removed, ...rest } = config.command;
-      await saveConfig({ ...config, command: rest });
+  const updated = { ...config };
+  let changed = false;
+  for (const key of ['commands', 'command'] as const) {
+    if (updated[key]?.[name]) {
+      const { [name]: removed, ...rest } = updated[key]!;
+      (updated as Record<string, unknown>)[key] = rest;
+      changed = true;
+    }
   }
+  if (changed) await saveConfig(updated);
 }
 
 export interface BackupFileEntry {

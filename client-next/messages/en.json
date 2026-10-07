@@ -53,7 +53,14 @@
       "allowPatterns": "Allow Patterns",
       "allowPlaceholder": "patterns, separated by commas",
       "denyPatterns": "Deny Patterns",
-      "denyPlaceholder": "patterns, separated by commas"
+      "denyPlaceholder": "patterns, separated by commas",
+      "orderedHint": "Ordered rules (V2). The last matching rule wins — put broad rules first, exceptions last.",
+      "noRules": "No rules yet. All operations are allowed by default.",
+      "actionPlaceholder": "action (e.g. shell)",
+      "resourcePlaceholder": "resource (e.g. git push *)",
+      "moveUp": "Move up (evaluated earlier)",
+      "moveDown": "Move down (evaluated later, wins)",
+      "addRule": "Add rule"
     },
     "debug": {
       "title": "Debug Menu",

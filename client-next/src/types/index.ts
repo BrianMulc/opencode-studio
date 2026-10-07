@@ -1,9 +1,21 @@
 export interface McpOAuthConfig {
+  // V1 camelCase (fallback) + V2 snake_case (native). Both accepted on read.
   clientId?: string;
   clientSecret?: string;
   scope?: string;
   callbackPort?: number;
   redirectUri?: string;
+  client_id?: string;
+  client_secret?: string;
+  callback_port?: number;
+  redirect_uri?: string;
+  auth_server_metadata_url?: string;
+}
+
+export interface McpTimeoutConfig {
+  startup?: number;
+  catalog?: number;
+  execution?: number;
 }
 
 export interface MCPConfig {
@@ -11,13 +23,17 @@ export interface MCPConfig {
   args?: string[];
   url?: string;
   env?: Record<string, string>;
-  enabled: boolean;
+  // V1 `enabled` (fallback) + V2 `disabled` (native). Server sends both.
+  enabled?: boolean;
+  disabled?: boolean;
   type: 'local' | 'remote';
-  timeout?: number;
+  timeout?: number | McpTimeoutConfig;
   cwd?: string;
   environment?: Record<string, string>;
   headers?: Record<string, string>;
   oauth?: McpOAuthConfig | false;
+  codemode?: boolean;
+  protocol?: 'legacy' | 'auto' | '2026-07-28';
 }
 
 export interface ModelAlias {
@@ -32,6 +48,13 @@ export type PermissionEntry =
   | Record<string, PermissionValue>
   | { allow?: string[]; deny?: string[] };
 
+// V2 native ordered permission rule.
+export interface PermissionRule {
+  action: string;
+  resource: string;
+  effect: PermissionValue;
+}
+
 export interface PermissionConfig {
   '*'?: PermissionValue;
   read?: PermissionEntry;
@@ -39,8 +62,15 @@ export interface PermissionConfig {
   glob?: PermissionEntry;
   grep?: PermissionEntry;
   list?: PermissionEntry;
+  // V2 native actions:
+  shell?: PermissionEntry;
+  subagent?: PermissionEntry;
+  // V1 fallbacks (renamed in V2: bash->shell, task->subagent):
   bash?: PermissionEntry;
   task?: PermissionEntry;
+  // V1 aliases collapsed into `edit` in V2 (write/patch->edit):
+  write?: PermissionEntry;
+  patch?: PermissionEntry;
   skill?: PermissionEntry;
   lsp?: PermissionEntry;
   todoread?: PermissionValue;
@@ -50,27 +80,40 @@ export interface PermissionConfig {
   question?: PermissionValue;
   external_directory?: PermissionEntry;
   doom_loop?: PermissionValue;
+  // V2 allows plugin-defined and per-MCP-server actions (<server>_<tool>).
+  [tool: string]: PermissionEntry | PermissionValue | undefined;
 }
 
 export type PermissionToolKey = keyof PermissionConfig;
 
 export interface AgentConfig {
   model?: string;
+  // V1 fallbacks (folded into `model` as provider/model#variant in V2):
   variant?: string;
   temperature?: number;
   top_p?: number;
+  options?: Record<string, unknown>;
+  // V2 native system prompt (V1 JSON used `prompt`; markdown body works in both):
+  system?: string;
   prompt?: string;
   tools?: Record<string, boolean>;
-  permissions?: PermissionConfig;
-  permission?: PermissionConfig;
+  permissions?: PermissionConfig | PermissionRule[];
+  permission?: PermissionConfig | PermissionRule[];
   description?: string;
   color?: string;
   steps?: number;
+  // V1 fallback (renamed to `steps` in V2):
   maxSteps?: number;
   mode?: 'subagent' | 'primary' | 'all';
+  // V2 native (V1 used `disable`):
+  disabled?: boolean;
   disable?: boolean;
   hidden?: boolean;
-  options?: Record<string, unknown>;
+  // V2 per-agent request overlays (replaces top-level temperature/top_p/options):
+  request?: {
+    headers?: Record<string, string>;
+    body?: Record<string, unknown>;
+  };
 }
 
 export type AgentSource = 'json' | 'markdown' | 'builtin';
@@ -108,66 +151,95 @@ export interface ProviderOptions {
   chunkTimeout?: number | false;
 }
 
+export interface ProviderModelConfig {
+  // V2 native model ID sent to the provider (V1 used `id`):
+  modelID?: string;
+  id?: string;
+  name?: string;
+  family?: string;
+  release_date?: string;
+  attachment?: boolean;
+  reasoning?: boolean;
+  temperature?: boolean;
+  tool_call?: boolean;
+  interleaved?: true | { field: 'reasoning' | 'reasoning_content' | 'reasoning_details' };
+  limit?: {
+    context?: number;
+    input?: number;
+    output?: number;
+  };
+  cost?: {
+    input: number;
+    output: number;
+    cache_read?: number;
+    cache_write?: number;
+    cache?: { read?: number; write?: number };
+  };
+  modalities?: {
+    input: string[];
+    output: string[];
+  };
+  // V2 native capabilities (replaces tool_call/modalities):
+  capabilities?: {
+    tools?: boolean;
+    input?: string[];
+    output?: string[];
+  };
+  experimental?: boolean;
+  status?: 'alpha' | 'beta' | 'deprecated' | 'active';
+  disabled?: boolean;
+  provider?: {
+    npm?: string;
+    api?: string;
+  };
+  // V1 object form { high: {...} } or V2 array form [{ id: 'high', ... }]:
+  variants?: Record<string, ModelVariantConfig> | ModelVariantConfig[];
+  headers?: Record<string, string>;
+  // V2 native request settings (V1 used `options`):
+  settings?: Record<string, unknown>;
+  body?: Record<string, unknown>;
+  options?: {
+    thinkingConfig?: {
+      thinkingLevel?: 'low' | 'medium' | 'high' | 'minimal';
+      thinkingBudget?: number;
+      includeThoughts?: boolean;
+    };
+  };
+}
+
+export interface ModelVariantConfig {
+  id?: string;
+  disabled?: boolean;
+  reasoning?: boolean;
+  settings?: Record<string, unknown>;
+  headers?: Record<string, string>;
+  body?: Record<string, unknown>;
+  options?: {
+    thinkingConfig?: {
+      thinkingLevel?: 'low' | 'medium' | 'high' | 'minimal';
+      thinkingBudget?: number;
+      includeThoughts?: boolean;
+    };
+  };
+}
+
 export interface ProviderConfig {
+  // V1 `api` -> V2 settings.baseURL; V1 `npm` -> V2 `package` (aisdk: prefix for AI SDK packages).
   api?: string;
   name?: string;
   env?: string[];
   id?: string;
   npm?: string;
-  models?: Record<string, {
-    id?: string;
-    name?: string;
-    family?: string;
-    release_date?: string;
-    attachment?: boolean;
-    reasoning?: boolean;
-    temperature?: boolean;
-    tool_call?: boolean;
-    interleaved?: true | { field: 'reasoning' | 'reasoning_content' | 'reasoning_details' };
-    limit?: {
-      context?: number;
-      input?: number;
-      output?: number;
-    };
-    cost?: {
-      input: number;
-      output: number;
-      cache_read?: number;
-      cache_write?: number;
-    };
-    modalities?: {
-      input: string[];
-      output: string[];
-    };
-    experimental?: boolean;
-    status?: 'alpha' | 'beta' | 'deprecated' | 'active';
-    provider?: {
-      npm?: string;
-      api?: string;
-    };
-    variants?: Record<string, {
-      disabled?: boolean;
-      reasoning?: boolean;
-      options?: {
-        thinkingConfig?: {
-          thinkingLevel?: 'low' | 'medium' | 'high' | 'minimal';
-          thinkingBudget?: number;
-          includeThoughts?: boolean;
-        };
-      };
-    }>;
-    headers?: Record<string, string>;
-    options?: {
-      thinkingConfig?: {
-        thinkingLevel?: 'low' | 'medium' | 'high' | 'minimal';
-        thinkingBudget?: number;
-        includeThoughts?: boolean;
-      };
-    };
-  }>;
+  package?: string;
+  canonical?: string;
+  models?: Record<string, ProviderModelConfig>;
   whitelist?: string[];
   blacklist?: string[];
   options?: ProviderOptions;
+  // V2 native request split:
+  settings?: ProviderOptions & Record<string, unknown>;
+  headers?: Record<string, string>;
+  body?: Record<string, unknown>;
 }
 
 export type ConfigProviderId = 'opencode' | 'oh-my-openagent' | 'oh-my-opencode-slim';
@@ -368,10 +440,14 @@ export interface KeybindsConfig {
 
 export interface CompactionConfig {
   auto?: boolean;
+  // V1 fallbacks (ignored with a warning in V2; use keep/buffer instead):
   prune?: boolean;
   reserved?: number;
   tail_turns?: number;
   preserve_recent_tokens?: number;
+  // V2 native retained-context budget + reserve:
+  keep?: { tokens?: number };
+  buffer?: number;
 }
 
 export interface WatcherConfig {
@@ -414,6 +490,9 @@ export interface ExperimentalConfig {
   primary_tools?: string[];
   continue_loop_on_deny?: boolean;
   mcp_timeout?: number;
+  // V2 native: top-level subagent_depth moved here (top-level is ignored in V2).
+  subagent_depth?: number;
+  portable_shell_scanner?: boolean;
   policies?: { action: string; effect: 'allow' | 'deny'; resource: string }[];
   openTelemetry?: boolean | {
     enabled?: boolean;
@@ -450,6 +529,25 @@ export interface AttachmentConfig {
   image?: AttachmentImageConfig;
 }
 
+// V2 native rename of `attachment` (nested image settings are identical).
+export interface MediaConfig {
+  image?: AttachmentImageConfig;
+}
+
+export interface WarmingConfig {
+  prompt?: string;
+  interval?: string;
+  duration?: string;
+}
+
+export interface WebsearchConfig {
+  provider?: string;
+}
+
+export interface WorktreeConfig {
+  directory?: string;
+}
+
 export interface EnterpriseConfig {
   url?: string;
 }
@@ -459,32 +557,54 @@ export interface SkillsConfig {
   urls?: string[];
 }
 
+// V1 object form { paths, urls } or V2 native array form [...] (both accepted).
+export type SkillsConfigValue = SkillsConfig | string[];
+
 export interface CommandConfig {
   template: string;
   description?: string;
   agent?: string;
   model?: string;
+  // V1 fallback (joined into `model` as provider/model#variant in V2):
   variant?: string;
+  // V2 native (V1 used `subtask`):
+  subagent?: boolean;
   subtask?: boolean;
 }
 
 export interface OpencodeConfig {
+  $schema?: string;
   base_url?: string;
+  // NOTE: theme/keybinds/tui inside opencode.json are legacy. V1 auto-migrates
+  // them to tui.json; V2 uses one global cli.json owned by the terminal client
+  // (see CliConfig + /api/cli-config). Kept for v1 fallback.
   theme?: 'dark' | 'light' | 'auto';
   model?: string | ModelConfig;
   small_model?: string;
   username?: string;
+  // V1 `autoupdate` (fallback) + V2 `update` (native). V2 accepts the V1 field
+  // without warning, but native UI should prefer `update`.
   autoupdate?: boolean | 'notify';
+  update?: 'disable' | 'notify' | 'auto';
   share?: 'manual' | 'auto' | 'disabled';
+  // Accepted but unsupported in V2 (ignored with a warning; use env/service flags).
   logLevel?: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
   server?: ServerConfig;
+  // V1 top-level (ignored in V2; use experimental.subagent_depth instead).
   subagent_depth?: number;
   default_agent?: string;
+  // V1 `snapshot` (fallback) + V2 `snapshots` (native).
   snapshot?: boolean;
+  snapshots?: boolean;
   shell?: string;
-  mcp?: Record<string, MCPConfig>;
+  // V1 flat map + V2 { servers, timeout } nesting (both accepted).
+  mcp?: (Record<string, MCPConfig> & { servers?: Record<string, MCPConfig>; timeout?: McpTimeoutConfig });
+  // V1 map (fallback) + V2 ordered array (native).
   permission?: PermissionConfig;
+  permissions?: PermissionRule[];
+  // V1 `agent`+`mode` (fallback) + V2 `agents` (native).
   agent?: AgentsConfig;
+  agents?: Record<string, AgentConfig>;
   tools?: Record<string, boolean>;
   tui?: TUIConfig;
   keybinds?: KeybindsConfig;
@@ -492,18 +612,49 @@ export interface OpencodeConfig {
   watcher?: WatcherConfig;
   lsp?: LSPConfig;
   formatter?: FormatterConfig;
+  // V1 `command` (fallback) + V2 `commands` (native).
   command?: Record<string, CommandConfig>;
-  plugin?: string[];
-  skills?: SkillsConfig;
+  commands?: Record<string, CommandConfig>;
+  // V1 `plugin` (fallback, strings or [pkg, options] tuples) + V2 `plugins` (native).
+  plugin?: (string | [string, unknown] | Record<string, unknown>)[];
+  plugins?: (string | { package: string; options?: unknown })[];
+  skills?: SkillsConfigValue;
   references?: Record<string, string | { repository: string; branch?: string; description?: string; hidden?: boolean } | { path: string; description?: string; hidden?: boolean }>;
   instructions?: string[];
+  // V1 `attachment` (fallback) + V2 `media` (native).
   attachment?: AttachmentConfig;
+  media?: MediaConfig;
   enterprise?: EnterpriseConfig;
   tool_output?: ToolOutputConfig;
   disabled_providers?: string[];
   enabled_providers?: string[];
   experimental?: ExperimentalConfig;
+  // V1 `provider` (fallback) + V2 `providers` (native).
   provider?: Record<string, ProviderConfig>;
+  providers?: Record<string, ProviderConfig>;
+  // --- V2 native additions (no V1 equivalent) ---
+  warming?: WarmingConfig | boolean;
+  websearch?: WebsearchConfig | false;
+  worktree?: WorktreeConfig;
+}
+
+// V2 terminal client configuration: one global file owned by the terminal
+// client (auto-migrated from layered v1 tui.json files on first V2 startup).
+// The background service does not load it.
+export interface CliConfig {
+  $schema?: string;
+  theme?: string;
+  [key: string]: unknown;
+}
+
+export interface OpencodeVersionInfo {
+  available: boolean;
+  raw: string | null;
+  major: number | null;
+  target: 'v1' | 'v2';
+  isV1: boolean;
+  isV2: boolean;
+  serverVersion?: string;
 }
 
 export interface SkillFile {

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { OpencodeConfig, ProviderConfig } from "@/types";
+import { getProviders, getProviderBaseURL, getProviderPackage } from "@/lib/opencode-compat";
 import { Check, Plus, Save, Trash } from "@nsmr/pixelart-react";
 
 interface ModelDraft {
@@ -105,42 +106,49 @@ function modelDraftsFromProvider(provider: ProviderConfig): ModelDraft[] {
   return Object.entries(provider.models || {}).map(([key, model]) => ({
     source: model,
     key,
-    id: toText(model.id),
+    id: toText((model as { modelID?: string }).modelID ?? model.id),
     name: toText(model.name),
     contextLimit: toNumberText(model.limit?.context),
     inputLimit: toNumberText(model.limit?.input),
     outputLimit: toNumberText(model.limit?.output),
     inputCost: toNumberText(model.cost?.input),
     outputCost: toNumberText(model.cost?.output),
-    cacheReadCost: toNumberText(model.cost?.cache_read),
-    cacheWriteCost: toNumberText(model.cost?.cache_write),
+    cacheReadCost: toNumberText(model.cost?.cache?.read ?? model.cost?.cache_read),
+    cacheWriteCost: toNumberText(model.cost?.cache?.write ?? model.cost?.cache_write),
     attachment: model.attachment === true,
     reasoning: model.reasoning === true,
     temperature: model.temperature === true,
-    toolCall: model.tool_call !== false,
+    toolCall: (model.capabilities?.tools ?? model.tool_call) !== false,
     experimental: model.experimental === true,
   }));
 }
 
 function providerDraftsFromConfig(config: OpencodeConfig): ProviderDraft[] {
-  return Object.entries(config.provider || {}).map(([id, provider]) => {
+  // V2 `providers` (native) + V1 `provider` (fallback); V2 wins on conflicts.
+  return Object.entries(getProviders(config)).map(([id, provider]) => {
+    const settings = (provider.settings ?? {}) as Record<string, unknown>;
     const options = provider.options || {};
+    const num = (v: unknown) => toNumberText(v);
+    const timeoutOf = (key: 'timeout' | 'headerTimeout' | 'chunkTimeout') =>
+      num((settings[key] as number | false | undefined) ?? options[key]);
+    const disabledOf = (key: 'timeout' | 'headerTimeout' | 'chunkTimeout') =>
+      (settings[key] as unknown) === false || options[key] === false;
     return {
       source: provider,
       id,
-      api: toText(provider.api),
+      api: toText(provider.api ?? (settings.baseURL as string) ?? options.baseURL),
       name: toText(provider.name),
-      npm: toText(provider.npm),
+      npm: toText(getProviderPackage(provider)),
       envText: (provider.env || []).join(", "),
-      apiKey: toText(options.apiKey),
-      baseURL: toText(options.baseURL),
-      timeout: toNumberText(options.timeout),
-      headerTimeout: toNumberText(options.headerTimeout),
-      chunkTimeout: toNumberText(options.chunkTimeout),
-      timeoutDisabled: options.timeout === false,
-      headerTimeoutDisabled: options.headerTimeout === false,
-      chunkTimeoutDisabled: options.chunkTimeout === false,
-      setCacheKey: options.setCacheKey === true,
+      apiKey: toText((settings.apiKey as string) ?? options.apiKey),
+      baseURL: toText(getProviderBaseURL(provider)),
+      timeout: timeoutOf('timeout'),
+      headerTimeout: timeoutOf('headerTimeout'),
+      chunkTimeout: timeoutOf('chunkTimeout'),
+      timeoutDisabled: disabledOf('timeout'),
+      headerTimeoutDisabled: disabledOf('headerTimeout'),
+      chunkTimeoutDisabled: disabledOf('chunkTimeout'),
+      setCacheKey: (settings.setCacheKey as boolean) === true || options.setCacheKey === true,
       models: modelDraftsFromProvider(provider),
     };
   });
@@ -176,7 +184,9 @@ function setTextField<T extends object>(target: T, key: string, value: string) {
 
 function buildModelConfig(model: ModelDraft) {
   const next: NonNullable<ProviderConfig["models"]>[string] = { ...(model.source || {}) };
-  setTextField(next, "id", model.id);
+  // V2-native `modelID` (V1 `id` accepted on read; server converts on write).
+  setTextField(next, "modelID", model.id);
+  delete (next as Record<string, unknown>).id;
   setTextField(next, "name", model.name);
 
   const limit: NonNullable<NonNullable<ProviderConfig["models"]>[string]["limit"]> = { ...(model.source?.limit || {}) };
@@ -195,13 +205,24 @@ function buildModelConfig(model: ModelDraft) {
   const inputCost = parseNonNegativeNumber(model.inputCost);
   const outputCost = parseNonNegativeNumber(model.outputCost);
   if (inputCost !== undefined && outputCost !== undefined) {
-    next.cost = { ...(model.source?.cost || {}), input: inputCost, output: outputCost };
+    const cost: NonNullable<NonNullable<ProviderConfig["models"]>[string]["cost"]> = {
+      ...(model.source?.cost || {}),
+      input: inputCost,
+      output: outputCost,
+    };
     const cacheRead = parseNonNegativeNumber(model.cacheReadCost);
     const cacheWrite = parseNonNegativeNumber(model.cacheWriteCost);
-    if (cacheRead !== undefined) next.cost.cache_read = cacheRead;
-    else delete next.cost.cache_read;
-    if (cacheWrite !== undefined) next.cost.cache_write = cacheWrite;
-    else delete next.cost.cache_write;
+    // V2-native cache object (server maps legacy cache_read/write on read).
+    const cache = { ...((model.source?.cost as { cache?: Record<string, number> } | undefined)?.cache || {}) };
+    if (cacheRead !== undefined) cache.read = cacheRead;
+    else delete cache.read;
+    if (cacheWrite !== undefined) cache.write = cacheWrite;
+    else delete cache.write;
+    if (Object.keys(cache).length > 0) cost.cache = cache;
+    else delete cost.cache;
+    delete (cost as Record<string, unknown>).cache_read;
+    delete (cost as Record<string, unknown>).cache_write;
+    next.cost = cost;
   } else {
     delete next.cost;
   }
@@ -212,8 +233,15 @@ function buildModelConfig(model: ModelDraft) {
   else delete next.reasoning;
   if (model.temperature) next.temperature = true;
   else delete next.temperature;
-  if (!model.toolCall) next.tool_call = false;
-  else delete next.tool_call;
+  // V2-native capabilities (server maps legacy tool_call on read).
+  if (!model.toolCall) {
+    next.capabilities = { ...(next.capabilities || {}), tools: false };
+  } else if (next.capabilities && typeof next.capabilities === 'object') {
+    const { tools, ...rest } = next.capabilities as { tools?: boolean } & Record<string, unknown>;
+    if (Object.keys(rest).length > 0) next.capabilities = rest as typeof next.capabilities;
+    else delete next.capabilities;
+  }
+  delete next.tool_call;
   if (model.experimental) next.experimental = true;
   else delete next.experimental;
 
@@ -222,33 +250,43 @@ function buildModelConfig(model: ModelDraft) {
 
 function buildProviderConfig(provider: ProviderDraft): ProviderConfig {
   const next: ProviderConfig = { ...(provider.source || {}) };
-  setTextField(next, "api", provider.api);
+  // V2-native `package` (+aisdk: prefix for AI SDK runtimes).
+  const npmValue = provider.npm.trim();
+  const pkg = npmValue.startsWith('@ai-sdk/') && !npmValue.startsWith('aisdk:')
+    ? `aisdk:${npmValue}`
+    : npmValue;
+  setTextField(next, "package", pkg);
+  delete next.npm;
+  // V1 `api` is an alias of the endpoint — fold into settings.baseURL.
+  delete next.api;
   setTextField(next, "name", provider.name);
-  setTextField(next, "npm", provider.npm);
 
   const env = parseList(provider.envText);
   if (env.length > 0) next.env = env;
   else delete next.env;
 
-  const options: NonNullable<ProviderConfig["options"]> = { ...(provider.source?.options || {}) };
-  setTextField(options, "apiKey", provider.apiKey);
-  setTextField(options, "baseURL", provider.baseURL);
+  // V2-native `settings` (server maps legacy `options` on read).
+  const settings: Record<string, unknown> = { ...((provider.source?.settings as Record<string, unknown>) || {}) };
+  const baseURL = provider.baseURL.trim() || provider.api.trim();
+  setTextField(settings, "apiKey", provider.apiKey);
+  setTextField(settings, "baseURL", baseURL);
   const timeout = parsePositiveNumber(provider.timeout);
   const headerTimeout = parsePositiveNumber(provider.headerTimeout);
   const chunkTimeout = parsePositiveNumber(provider.chunkTimeout);
-  if (provider.timeoutDisabled) options.timeout = false;
-  else if (timeout !== undefined) options.timeout = timeout;
-  else delete options.timeout;
-  if (provider.headerTimeoutDisabled) options.headerTimeout = false;
-  else if (headerTimeout !== undefined) options.headerTimeout = headerTimeout;
-  else delete options.headerTimeout;
-  if (provider.chunkTimeoutDisabled) options.chunkTimeout = false;
-  else if (chunkTimeout !== undefined) options.chunkTimeout = chunkTimeout;
-  else delete options.chunkTimeout;
-  if (provider.setCacheKey) options.setCacheKey = true;
-  else delete options.setCacheKey;
-  if (Object.keys(options).length > 0) next.options = options;
-  else delete next.options;
+  if (provider.timeoutDisabled) settings.timeout = false;
+  else if (timeout !== undefined) settings.timeout = timeout;
+  else delete settings.timeout;
+  if (provider.headerTimeoutDisabled) settings.headerTimeout = false;
+  else if (headerTimeout !== undefined) settings.headerTimeout = headerTimeout;
+  else delete settings.headerTimeout;
+  if (provider.chunkTimeoutDisabled) settings.chunkTimeout = false;
+  else if (chunkTimeout !== undefined) settings.chunkTimeout = chunkTimeout;
+  else delete settings.chunkTimeout;
+  if (provider.setCacheKey) settings.setCacheKey = true;
+  else delete settings.setCacheKey;
+  if (Object.keys(settings).length > 0) next.settings = settings as ProviderConfig['settings'];
+  else delete next.settings;
+  delete next.options;
 
   const models: NonNullable<ProviderConfig["models"]> = {};
   for (const model of provider.models) {
@@ -388,7 +426,7 @@ export function CustomProviderModelEditor({ config, onSave }: CustomProviderMode
       await onSave({
         model: defaultModel.trim() || undefined,
         small_model: smallModel.trim() || undefined,
-        provider: Object.keys(providerConfig).length > 0 ? providerConfig : undefined,
+        providers: Object.keys(providerConfig).length > 0 ? providerConfig : undefined,
       });
     } finally {
       setSaving(false);

@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+## [2.9.16] - 2026-10-07
+
+### Added
+- **OpenCode v2 support (v1 fallback)**: the server detects the installed OpenCode major version (`GET /api/opencode-version`) and reads/writes config in the matching shape. The Studio UI always speaks canonical V2. New `server/lib/opencode-compat.js` normalization layer with tests.
+- **New V2 settings UI**: update policy (`update`), snapshots (`snapshots`), `media.image` limits, session warming, web-search provider, worktree directory, `experimental.policies` editor, portable shell scanner toggle.
+- **V2 terminal client config**: read/write the global `~/.config/opencode/cli.json` (`GET/POST /api/cli-config`); the theme picker targets it when V2 is detected.
+- **Ordered permissions editor**: V2 `permissions` arrays render as an ordered rule list (last match wins) with add/remove/reorder; V1 maps keep the existing editor. Actions renamed (`bash`→`shell`, `task`→`subagent`, `write`/`patch`→`edit`).
+- **Dual-shape providers editor**: reads V1 `provider`/`npm`/`api`/`options` and V2 `providers`/`package`/`settings`, writes V2-native (model `modelID`, `capabilities`, cache objects) with server-side V1 conversion.
+- **Dual implementation guardrail plugin**: the delegation-guard plugin is generated for the detected runtime (V2 `Plugin.define` + `subagent` hook, V1 `server()` + `task` hook).
+
+### Changed
+- **Agents**: canonical V2 entries (`system`, `disabled`, `model#variant`, `permissions`, `request.body`); `mode/`/`modes/` and `command(s)`/`skill`/`plugin(s)` directories all discovered; V2 has no built-in `scout`.
+- **MCP**: V2 `servers` nesting, `disabled` flag, per-purpose timeouts, snake_case OAuth; profile sync, presets, and API-key endpoints handle both shapes.
+- **Rules**: V2 discovers `AGENTS.md` only (saving `CLAUDE.md` on V2 returns a warning).
+- **LSP/formatters page**: notes that V2 preserves but does not run language servers.
+- **Preserved, not stripped**: V2-ignored fields (`logLevel`, `server`, `prune`, provider/model metadata, …) round-trip verbatim so version switches never destroy user data.
+
+### Fixed
+- **Malformed agent entries**: non-object `agent`/`mode`/`agents` values (and scalar markdown frontmatter) pass through verbatim instead of corrupting into char-index objects; same guard in the frontend `getAgents` reader.
+- **Empty plugin field**: `plugin: null` no longer materializes a `plugins: [null]` array.
+- **Global MCP timeout**: a numeric `mcp.timeout` now maps to `catalog`+`execution` defaults (like per-server numbers and `experimental.mcp_timeout`) instead of being dropped.
+- **Model variants**: V1 variants-object values nest package-specific options under the variant's `settings` (matching the documented V2 shape) and flatten back on V1 writes, keeping object→array→object round-trips stable.
+- **Provider/model `headers`/`body`**: `options.headers`/`options.body` bags hoist to the top-level V2 `headers`/`body` fields on read and fold back into `options` on V1 writes.
+
 ## [2.3.0] - 2026-05-09
 
 ### Fixed

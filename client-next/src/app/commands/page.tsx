@@ -31,6 +31,7 @@ import { Switch } from "@/components/ui/switch";
 import { PageHelp } from "@/components/page-help";
 import { toast } from "sonner";
 import type { CommandConfig } from "@/types";
+import { splitModelVariant, joinModelVariant, isCommandSubagent } from "@/lib/opencode-compat";
 
 interface CommandEntry {
   name: string;
@@ -40,6 +41,7 @@ interface CommandEntry {
   model?: string;
   variant?: string;
   subtask?: boolean;
+  subagent?: boolean;
 }
 
 type CommandFormState = Omit<CommandEntry, 'name'>;
@@ -53,23 +55,31 @@ const emptyCommandForm = (): CommandFormState => ({
   subtask: false,
 });
 
-const toEntry = (name: string, value: CommandConfig): CommandEntry => ({
-  name,
-  template: value.template,
-  ...(value.description && { description: value.description }),
-  ...(value.agent && { agent: value.agent }),
-  ...(value.model && { model: value.model }),
-  ...(value.variant && { variant: value.variant }),
-  ...(value.subtask !== undefined && { subtask: value.subtask }),
-});
+const toEntry = (name: string, value: CommandConfig): CommandEntry => {
+  // V2 joins variant into the model reference (provider/model#variant).
+  const { model, variant: split } = splitModelVariant(value.model);
+  return {
+    name,
+    template: value.template,
+    ...(value.description && { description: value.description }),
+    ...(value.agent && { agent: value.agent }),
+    ...((model || value.model) && { model: model || value.model }),
+    ...((value.variant || split) && { variant: value.variant || split }),
+    ...((value.subagent !== undefined || value.subtask !== undefined) && {
+      subtask: isCommandSubagent(value),
+      subagent: isCommandSubagent(value),
+    }),
+  };
+};
 
 const toSavePayload = (form: CommandFormState): CommandConfig => {
+  // Canonical V2: subagent flag + joined model reference (server converts for V1).
   const payload: CommandConfig = { template: form.template };
   if (form.description?.trim()) payload.description = form.description.trim();
   if (form.agent?.trim()) payload.agent = form.agent.trim();
-  if (form.model?.trim()) payload.model = form.model.trim();
-  if (form.variant?.trim()) payload.variant = form.variant.trim();
-  if (form.subtask) payload.subtask = true;
+  const joined = joinModelVariant(form.model?.trim() || "", form.variant?.trim() || "");
+  if (joined) payload.model = joined;
+  if (form.subtask || form.subagent) payload.subagent = true;
   return payload;
 };
 

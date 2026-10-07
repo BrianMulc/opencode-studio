@@ -23,6 +23,7 @@ import { Search } from "@nsmr/pixelart-react";
 import { PageHelp } from "@/components/page-help";
 import { PresetsManager } from "@/components/presets-manager";
 import { useErrorTranslation } from "@/lib/error-translate";
+import { isMcpEnabled } from "@/lib/opencode-compat";
 import type { MCPConfig } from "@/types";
 
 export default function MCPPage() {
@@ -65,8 +66,9 @@ export default function MCPPage() {
 
   const handleToggle = async (key: string) => {
     try {
+      const wasEnabled = isMcpEnabled(mcpData[key]);
       await toggleMCP(key);
-      toast.success(mcpData[key]?.enabled ? t('toggleDisabled', { name: key }) : t('toggleEnabled', { name: key }));
+      toast.success(wasEnabled ? t('toggleDisabled', { name: key }) : t('toggleEnabled', { name: key }));
       await fetchMcpServers();
     } catch (err: any) {
       const msg = err.response?.data?.error || err.message || t('unknownError');

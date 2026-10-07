@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import type { MCPConfig } from "@/types";
+import { isMcpEnabled } from "@/lib/opencode-compat";
 
 interface MCPCardProps {
   name: string;
@@ -37,6 +38,9 @@ export function MCPCard({ name, config, onToggle, onDelete, onEdit }: MCPCardPro
     ...(Array.isArray(config.command) ? config.command : config.command ? [config.command] : []),
     ...(config.args || [])
   ].join(" ") || config.url || "";
+
+  // V1 `enabled` (fallback) + V2 `disabled` (native); server sends both.
+  const enabled = isMcpEnabled(config);
 
   const handleOpenEdit = () => {
     setConfigJson(JSON.stringify(config, null, 2));
@@ -72,7 +76,7 @@ export function MCPCard({ name, config, onToggle, onDelete, onEdit }: MCPCardPro
 
   return (
     <>
-      <Card className={config.enabled ? "border-primary/50" : "opacity-60"}>
+      <Card className={enabled ? "border-primary/50" : "opacity-60"}>
         <CardContent className="p-4">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -95,7 +99,7 @@ export function MCPCard({ name, config, onToggle, onDelete, onEdit }: MCPCardPro
                 <Edit className="h-4 w-4" />
               </Button>
               <Switch
-                checked={config.enabled}
+                checked={enabled}
                 onCheckedChange={onToggle}
                 onClick={(e) => e.stopPropagation()}
                 aria-label={`Toggle ${name}`}

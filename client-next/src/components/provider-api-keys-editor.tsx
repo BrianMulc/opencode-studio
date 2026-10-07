@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Check, Alert } from "@nsmr/pixelart-react";
 import { setProviderApiKey } from "@/lib/api";
+import { getProviders, getProviderApiKey } from "@/lib/opencode-compat";
 import type { OpencodeConfig } from "@/types";
 
 // Lets users set/clear the apiKey of each provider in the ACTIVE opencode.json.
@@ -16,7 +17,8 @@ import type { OpencodeConfig } from "@/types";
 // never echoed back by the server.
 export function ProviderApiKeysEditor({ config, onSaved }: { config: OpencodeConfig; onSaved: () => void }) {
   const t = useTranslations('settings.providerKeys');
-  const providers = Object.entries(config.provider || {});
+  // V2 `providers` (native) + V1 `provider` (fallback).
+  const providers = Object.entries(getProviders(config));
   // Drafts keyed by provider id; inputs start empty (placeholder shows status)
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
@@ -58,7 +60,8 @@ export function ProviderApiKeysEditor({ config, onSaved }: { config: OpencodeCon
   return (
     <div className="space-y-3">
       {providers.map(([id, provider]) => {
-        const existingKey = provider?.options?.apiKey;
+        // apiKey may live under V2 `settings` or V1 `options`.
+        const existingKey = getProviderApiKey(provider);
         const hasKey = typeof existingKey === 'string' && existingKey.length > 0;
         const draft = drafts[id] ?? "";
         const dirty = draft.length > 0;

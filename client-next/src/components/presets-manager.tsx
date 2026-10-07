@@ -36,6 +36,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
 import { getPresets, savePreset, deletePreset, applyPreset } from "@/lib/api";
+import { getMcpServers, isMcpEnabled } from "@/lib/opencode-compat";
 import type { Preset } from "@/types";
 
 export function PresetsManager() {
@@ -62,7 +63,7 @@ export function PresetsManager() {
       // Initialize with currently enabled items
       setSelectedSkills(skills.filter(s => s.enabled).map(s => s.name));
       setSelectedPlugins(plugins.filter(p => p.enabled).map(p => p.name));
-      setSelectedMcps(config?.mcp ? Object.entries(config.mcp).filter(([_, c]) => c.enabled).map(([k]) => k) : []);
+      setSelectedMcps(config ? Object.entries(getMcpServers(config)).filter(([_, c]) => isMcpEnabled(c)).map(([k]) => k) : []);
       
       setIncludeSkills(true);
       setIncludePlugins(true);
@@ -327,26 +328,26 @@ export function PresetsManager() {
                   <div className="flex items-center justify-between p-3 border-b bg-muted/30">
                     <Label htmlFor="include-mcps" className="cursor-pointer font-medium text-sm">{t("presets.mcps")}</Label>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">{selectedMcps.length}/{config?.mcp ? Object.keys(config.mcp).length : 0}</span>
+                      <span className="text-xs text-muted-foreground">{selectedMcps.length}/{Object.keys(getMcpServers(config)).length}</span>
                       <Button
                         variant="ghost"
                         size="sm"
                         className="h-6 text-xs px-2"
                         onClick={() => {
-                          const allLocks = config?.mcp ? Object.keys(config.mcp) : [];
+                          const allLocks = Object.keys(getMcpServers(config));
                           if (selectedMcps.length === allLocks.length) setSelectedMcps([]);
                           else setSelectedMcps(allLocks);
                         }}
                       >
-                        {selectedMcps.length === (config?.mcp ? Object.keys(config.mcp).length : 0) ? t("presets.none") : t("presets.all")}
+                        {selectedMcps.length === Object.keys(getMcpServers(config)).length ? t("presets.none") : t("presets.all")}
                       </Button>
                     </div>
                   </div>
                   <div className="flex-1 overflow-y-auto max-h-[65vh] p-2 space-y-1">
-                    {!config?.mcp || Object.keys(config.mcp).length === 0 ? (
+                    {Object.keys(getMcpServers(config)).length === 0 ? (
                       <p className="text-xs text-muted-foreground italic p-2">{t("presets.noMcpServersFound")}</p>
                     ) : (
-                      Object.keys(config.mcp).map(key => (
+                      Object.keys(getMcpServers(config)).map(key => (
                         <div key={key} className="flex items-start justify-between gap-3 p-2 rounded hover:bg-muted/50 text-sm">
                           <label htmlFor={`mcp-${key}`} className="flex-1 min-w-0 cursor-pointer whitespace-normal break-words leading-tight" title={key}>{key}</label>
                           <Switch 

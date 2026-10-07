@@ -53,7 +53,14 @@
       "allowPatterns": "\u5141\u8bb8\u6a21\u5f0f",
       "allowPlaceholder": "\u6a21\u5f0f\uff0c\u4ee5\u9017\u53f7\u5206\u9694",
       "denyPatterns": "\u62d2\u7edd\u6a21\u5f0f",
-      "denyPlaceholder": "\u6a21\u5f0f\uff0c\u4ee5\u9017\u53f7\u5206\u9694"
+      "denyPlaceholder": "\u6a21\u5f0f\uff0c\u4ee5\u9017\u53f7\u5206\u9694",
+      "orderedHint": "有序规则（V2）。最后一个匹配的规则生效——宽泛规则在前，例外在后。",
+      "noRules": "暂无规则。默认允许所有操作。",
+      "actionPlaceholder": "动作（例如 shell）",
+      "resourcePlaceholder": "资源（例如 git push *）",
+      "moveUp": "上移（先求值）",
+      "moveDown": "下移（后求值，优先生效）",
+      "addRule": "添加规则"
     },
     "debug": {
       "title": "\u8c03\u8bd5\u83dc\u5355",

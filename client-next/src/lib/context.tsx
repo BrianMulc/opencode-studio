@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { getConfig, saveConfig as apiSaveConfig, getSkills, getPlugins, toggleSkill as apiToggleSkill, togglePlugin as apiTogglePlugin, checkHealth, checkVersion, getPendingAction, clearPendingAction, syncAuto, syncPush, getSyncStatus, type PendingAction, type VersionCheck } from '@/lib/api';
 import { isUpdateInProgress, clearUpdateInProgress } from '@/lib/update-state';
+import { getMcpServers, setMcpServers, isMcpEnabled, withMcpEnabled } from '@/lib/opencode-compat';
 import type { OpencodeConfig, MCPConfig, SkillInfo, PluginInfo } from '@/types';
 import { UpdateRequiredModal } from '@/components/update-required-modal';
 
@@ -241,52 +242,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [triggerAutoSync]);
 
   const toggleMCP = useCallback(async (key: string) => {
-    if (!config?.mcp?.[key]) return;
-    const newConfig = {
-      ...config,
-      mcp: {
-        ...config.mcp,
-        [key]: {
-          ...config.mcp[key],
-          enabled: !config.mcp[key].enabled,
-        },
-      },
+    if (!config) return;
+    const servers = getMcpServers(config);
+    if (!servers[key]) return;
+    const next = {
+      ...servers,
+      [key]: withMcpEnabled(servers[key], !isMcpEnabled(servers[key])),
     };
-    await saveConfigHandler(newConfig);
+    await saveConfigHandler(setMcpServers(config, next));
   }, [config, saveConfigHandler]);
 
   const deleteMCP = useCallback(async (key: string) => {
     if (!config) return;
-    const rest = { ...config.mcp };
-    delete rest[key];
-    const newConfig = { ...config, mcp: rest };
-    await saveConfigHandler(newConfig);
+    const servers = getMcpServers(config);
+    const { [key]: _removed, ...rest } = servers;
+    await saveConfigHandler(setMcpServers(config, rest));
   }, [config, saveConfigHandler]);
 
   const addMCP = useCallback(async (key: string, mcpConfig: MCPConfig) => {
     if (!config) return;
     const sanitizedConfig = sanitizeMCPConfig(mcpConfig);
-    const newConfig = {
-      ...config,
-      mcp: {
-        ...config.mcp,
-        [key]: sanitizedConfig,
-      },
-    };
-    await saveConfigHandler(newConfig);
+    await saveConfigHandler(setMcpServers(config, { ...getMcpServers(config), [key]: sanitizedConfig }));
   }, [config, saveConfigHandler]);
 
   const updateMCP = useCallback(async (key: string, mcpConfig: MCPConfig) => {
     if (!config) return;
     const sanitizedConfig = sanitizeMCPConfig(mcpConfig);
-    const newConfig = {
-      ...config,
-      mcp: {
-        ...config.mcp,
-        [key]: sanitizedConfig,
-      },
-    };
-    await saveConfigHandler(newConfig);
+    await saveConfigHandler(setMcpServers(config, { ...getMcpServers(config), [key]: sanitizedConfig }));
   }, [config, saveConfigHandler]);
 
   const toggleSkill = useCallback(async (name: string) => {

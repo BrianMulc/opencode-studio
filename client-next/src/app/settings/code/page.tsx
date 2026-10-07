@@ -188,7 +188,10 @@ export default function CodeSettingsPage() {
 
       <Card>
         <CardHeader>
-          <PageHelp title={t('code.pageTitle')} docUrl="https://opencode.ai/docs" docTitle={t('code.pageDocTitle')} />
+      <PageHelp title={t('code.pageTitle')} docUrl="https://opencode.ai/docs" docTitle={t('code.pageDocTitle')} />
+      <p className="text-xs text-muted-foreground">
+        OpenCode V2 accepts and preserves LSP configuration but does not run language servers or produce diagnostics — prefer the project&apos;s lint/typecheck commands for those workflows.
+      </p>
           <CardTitle>{t('code.formatters.title')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">

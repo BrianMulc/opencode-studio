@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
-import type { PermissionConfig, PermissionValue } from "@/types";
+import type { PermissionConfig, PermissionRule, PermissionValue } from "@/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,14 +10,17 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Plus, Trash } from "@nsmr/pixelart-react";
 
+// V2 canonical actions. Legacy aliases (bash->shell, task->subagent,
+// write/patch->edit) translate on save; they appear below only if present
+// in a legacy map so old configs stay editable.
 const TOOL_LIST = [
   "read",
   "edit",
   "glob",
   "grep",
   "list",
-  "bash",
-  "task",
+  "shell",
+  "subagent",
   "skill",
   "lsp",
   "todoread",
@@ -28,6 +31,8 @@ const TOOL_LIST = [
   "external_directory",
   "doom_loop",
 ] as const;
+
+const EFFECTS: PermissionValue[] = ["allow", "ask", "deny"];
 
 type PermissionMode = "simple" | "map" | "list";
 
@@ -50,19 +55,119 @@ function fromArrayInput(input: string) {
 }
 
 interface PermissionEditorProps {
-  value: PermissionConfig;
-  onChange: (next: PermissionConfig) => void;
+  value: PermissionConfig | PermissionRule[];
+  onChange: (next: PermissionConfig | PermissionRule[]) => void;
   className?: string;
 }
 
+function isRuleArray(value: PermissionConfig | PermissionRule[]): value is PermissionRule[] {
+  return Array.isArray(value);
+}
+
+function OrderedRulesEditor({ value, onChange }: { value: PermissionRule[]; onChange: (next: PermissionRule[]) => void }) {
+  const t = useTranslations("common");
+
+  const updateRule = (index: number, patch: Partial<PermissionRule>) => {
+    onChange(value.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+  };
+
+  const removeRule = (index: number) => {
+    onChange(value.filter((_, i) => i !== index));
+  };
+
+  const moveRule = (index: number, dir: -1 | 1) => {
+    const target = index + dir;
+    if (target < 0 || target >= value.length) return;
+    const next = [...value];
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(next);
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      <p className="text-xs text-muted-foreground mb-3">
+        {t("permissions.orderedHint")}
+      </p>
+      <div className="flex-1 min-h-0 overflow-y-auto pr-2 space-y-2">
+        {value.length === 0 && (
+          <p className="text-xs text-muted-foreground italic">{t("permissions.noRules")}</p>
+        )}
+        {value.map((rule, i) => (
+          <div key={i} className="flex flex-col gap-2 md:flex-row md:items-center rounded-md border bg-muted/20 border-border/60 p-3">
+            <Input
+              className="font-mono h-8 text-xs md:w-[130px]"
+              value={rule.action}
+              onChange={(e) => updateRule(i, { action: e.target.value })}
+              placeholder={t("permissions.actionPlaceholder")}
+              list="permission-actions"
+            />
+            <Input
+              className="font-mono h-8 text-xs flex-1"
+              value={rule.resource}
+              onChange={(e) => updateRule(i, { resource: e.target.value })}
+              placeholder={t("permissions.resourcePlaceholder")}
+            />
+            <Select value={rule.effect} onValueChange={(next) => updateRule(i, { effect: next as PermissionValue })}>
+              <SelectTrigger className="md:w-[100px] h-8 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {EFFECTS.map((e) => (
+                  <SelectItem key={e} value={e}>{t(`permissions.${e}`)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex gap-1">
+              <Button variant="ghost" size="icon" className="h-8 w-8" disabled={i === 0} onClick={() => moveRule(i, -1)} title={t("permissions.moveUp")}>↑</Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8" disabled={i === value.length - 1} onClick={() => moveRule(i, 1)} title={t("permissions.moveDown")}>↓</Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => removeRule(i)}>
+                <Trash className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        ))}
+        <datalist id="permission-actions">
+          {TOOL_LIST.map((tool) => (
+            <option key={tool} value={tool} />
+          ))}
+        </datalist>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-8 gap-2 text-xs mt-3 self-start"
+        onClick={() => onChange([...value, { action: "shell", resource: "*", effect: "ask" as PermissionValue }])}
+      >
+        <Plus className="h-3 w-3" />
+        {t("permissions.addRule")}
+      </Button>
+    </div>
+  );
+}
+
 export function PermissionEditor({ value, onChange, className }: PermissionEditorProps) {
+  if (isRuleArray(value)) {
+    return (
+      <div className={cn("flex flex-col h-full", className)}>
+        <OrderedRulesEditor value={value} onChange={onChange} />
+      </div>
+    );
+  }
+  return <MapPermissionEditor value={value} onChange={onChange} className={className} />;
+}
+
+function MapPermissionEditor({ value, onChange, className }: { value: PermissionConfig; onChange: (next: PermissionConfig) => void; className?: string }) {
   const t = useTranslations("common");
   const [patternDrafts, setPatternDrafts] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [onlyEnabled, setOnlyEnabled] = useState(false);
 
   const tools = useMemo(() => {
-    return TOOL_LIST.filter((tool) => {
+    // Canonical actions first, then any extra keys present in a legacy map
+    // (bash/task/write/patch aliases, MCP server actions, plugin actions).
+    const extra = Object.keys(value ?? {}).filter((k) => !(TOOL_LIST as readonly string[]).includes(k));
+    const all = [...TOOL_LIST, ...extra];
+    return all.filter((tool) => {
       const matchesSearch = tool.toLowerCase().includes(search.toLowerCase());
       if (!matchesSearch) return false;
       if (onlyEnabled) {

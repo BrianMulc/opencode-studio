@@ -39,6 +39,7 @@ function execSync(cmd, opts) {
 }
 const yaml = require('js-yaml');
 const configProviders = require('./lib/config-providers');
+const compat = require('./lib/opencode-compat');
 const { aggregateAgents, parseAgentMarkdown, buildAgentMarkdown } = require('./lib/agent-aggregation');
 const {
     assertSafeBackupResourceNames,
@@ -869,8 +870,10 @@ const getSkillDirs = () => {
     const dirs = [];
 
     for (const root of roots) {
-        const skillsDir = path.join(root, 'skills');
-        if (fs.existsSync(skillsDir)) {
+        // V2 prefers `skills/` but still discovers V1 `skill/`.
+        for (const dirname of ['skills', 'skill']) {
+            const skillsDir = path.join(root, dirname);
+            if (!fs.existsSync(skillsDir)) continue;
             try {
                 const packages = fs.readdirSync(skillsDir, { withFileTypes: true })
                     .filter(d => d.isDirectory());
@@ -908,9 +911,12 @@ const getCommandDirs = () => {
     const dirs = [];
 
     for (const root of roots) {
-        const cmdDir = path.join(root, 'command');
-        if (fs.existsSync(cmdDir)) {
-            dirs.push({ path: cmdDir, source: 'command-dir', root });
+        // V2 prefers `commands/` but still discovers V1 `command/`.
+        for (const name of ['commands', 'command']) {
+            const cmdDir = path.join(root, name);
+            if (fs.existsSync(cmdDir)) {
+                dirs.push({ path: cmdDir, source: 'command-dir', root });
+            }
         }
     }
 
@@ -1116,8 +1122,12 @@ const getAgentDirs = () => {
     const dirs = [];
 
     for (const root of roots) {
+        // V1 agent files may live under agent/, agents/, mode/ or modes/.
+        // V2 still discovers all four; `agents/` is the preferred location.
         dirs.push(path.join(root, 'agents'));
         dirs.push(path.join(root, 'agent'));
+        dirs.push(path.join(root, 'modes'));
+        dirs.push(path.join(root, 'mode'));
         dirs.push(path.join(root, '.opencode', 'agents'));
         dirs.push(path.join(root, '.opencode', 'agent'));
     }
@@ -1128,6 +1138,15 @@ const getAgentDirs = () => {
 const validatePermissionValue = (value) => {
     const allowed = ['ask', 'allow', 'deny'];
     if (value === undefined || value === null) return true;
+    // V2 ordered array: [{ action, resource, effect }]
+    if (Array.isArray(value)) {
+        return value.every((rule) => {
+            if (!rule || typeof rule !== 'object') return false;
+            if (typeof rule.action !== 'string' || !rule.action) return false;
+            if (rule.resource !== undefined && typeof rule.resource !== 'string') return false;
+            return allowed.includes(rule.effect);
+        });
+    }
     if (typeof value === 'string') return allowed.includes(value);
     if (typeof value !== 'object') return false;
 
@@ -1153,13 +1172,17 @@ const findRulesFile = () => {
     const configPath = getConfigPath();
     if (!configPath) return { path: null, source: 'none' };
 
+    // V2 only discovers AGENTS.md. V1 also falls back to CLAUDE.md.
+    const target = compat.getTargetShape();
+    const names = target === 'v1' ? ['AGENTS.md', 'CLAUDE.md'] : ['AGENTS.md'];
+
     let dir = path.dirname(configPath);
     let last = null;
     while (dir && dir !== last) {
-        const agentsPath = path.join(dir, 'AGENTS.md');
-        if (fs.existsSync(agentsPath)) return { path: agentsPath, source: 'AGENTS.md' };
-        const claudePath = path.join(dir, 'CLAUDE.md');
-        if (fs.existsSync(claudePath)) return { path: claudePath, source: 'CLAUDE.md' };
+        for (const name of names) {
+            const candidate = path.join(dir, name);
+            if (fs.existsSync(candidate)) return { path: candidate, source: name };
+        }
         last = dir;
         dir = path.dirname(dir);
     }
@@ -1179,7 +1202,7 @@ const detectTool = (tool) => {
     }
 };
 
-const loadConfig = () => {
+const loadRawConfig = () => {
     const configPath = getConfigPath();
     if (!configPath || !fs.existsSync(configPath)) return null;
     try {
@@ -1194,10 +1217,23 @@ const loadConfig = () => {
     }
 };
 
+// Canonical (V2-native) view of the active config. The wire format between the
+// Studio server and client is always canonical; disk writes use forWrite() to
+// match the detected OpenCode major version (v2 primary, v1 fallback).
+const loadConfig = () => {
+    const raw = loadRawConfig();
+    if (!raw) return null;
+    try {
+        return compat.normalizeToCanonical(raw);
+    } catch {
+        return raw;
+    }
+};
+
 const saveConfig = (config) => {
     const configPath = getConfigPath();
     if (!configPath) throw new Error('No config path found');
-    atomicWriteFileSync(configPath, JSON.stringify(config, null, 2));
+    atomicWriteFileSync(configPath, JSON.stringify(compat.forWrite(config, compat.getTargetShape()), null, 2));
 };
 
 const aggregateModels = () => {
@@ -1216,15 +1252,19 @@ const aggregateModels = () => {
             const config = configProviders.loadConfigFileSync(configPath);
             
             let providers = null;
-            
-            if (config.model && config.model.providers) {
-                providers = config.model.providers;
-            } else if (config.providers) {
+
+            const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+            if (isObj(config.providers)) {
                 providers = config.providers;
+            } else if (isObj(config.provider)) {
+                providers = config.provider;
+            } else if (isObj(config.model) && isObj(config.model.providers)) {
+                providers = config.model.providers;
             }
             
             if (providers && typeof providers === 'object') {
-                for (const [providerName, providerConfig] of Object.entries(providers)) {
+                for (const [rawName, providerConfig] of Object.entries(providers)) {
+                    const providerName = compat.canonicalProviderId(rawName);
                     if (!providerMap.has(providerName)) {
                         providerMap.set(providerName, {
                             name: providerName,
@@ -1279,29 +1319,34 @@ const loadAggregatedConfig = () => {
     });
 
     [...configs].reverse().forEach(({ config }) => {
+        // MCP: V1 flat entries and V2 `servers` nesting coexist; V2 wins.
         if (config.mcp && typeof config.mcp === 'object') {
-            for (const [key, value] of Object.entries(config.mcp)) {
+            const servers = compat.readMcpServers(config);
+            for (const [key, value] of Object.entries(servers)) {
                 aggregated.mcp[key] = value;
             }
         }
 
-        if (config.command && typeof config.command === 'object') {
-            Object.assign(aggregated.command, config.command);
+        // Commands: V1 `command` and V2 `commands` coexist; V2 wins.
+        for (const cmds of [config.command, config.commands]) {
+            if (cmds && typeof cmds === 'object') {
+                Object.assign(aggregated.command, cmds);
+            }
         }
 
         if (config.env && typeof config.env === 'object') {
             Object.assign(aggregated.env, config.env);
         }
 
-        const pluginList = config.plugin || config.plugins;
+        const pluginList = config.plugins || config.plugin;
         if (pluginList && Array.isArray(pluginList)) {
             for (const plugin of pluginList) {
-                const name = typeof plugin === 'string' ? plugin : plugin.name || plugin.npm;
+                const name = typeof plugin === 'string' ? plugin : plugin.name || plugin.npm || plugin.package;
                 if (name && !aggregated.plugins.find((p) => p.name === name)) {
                     aggregated.plugins.push({
                         name,
                         source: 'json-config',
-                        type: typeof plugin === 'object' && plugin.npm ? 'npm' : 'file'
+                        type: typeof plugin === 'object' && (plugin.npm || plugin.package) ? 'npm' : 'file'
                     });
                 }
             }
@@ -1312,6 +1357,18 @@ const loadAggregatedConfig = () => {
 };
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', version: SERVER_VERSION }));
+
+// OpenCode binary version detection (v2 primary, v1 fallback).
+// The Studio wire format is always canonical V2; disk writes use forWrite()
+// to match this target shape.
+app.get('/api/opencode-version', (req, res) => {
+    try {
+        const info = compat.detectOpencodeVersion();
+        res.json({ ...info, serverVersion: SERVER_VERSION });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 
 app.post('/api/shutdown', (req, res) => {
     res.json({ success: true });
@@ -1758,14 +1815,48 @@ app.get('/api/config', (req, res) => {
     res.json(config);
 });
 
+// V2 terminal client configuration (one global cli.json owned by the terminal
+// client; the background service does not load it). V1 layered tui.json files
+// are auto-migrated by the first V2 terminal startup. Studio exposes it here
+// so theme/client settings remain editable from the UI.
+const getCliConfigPath = () => path.join(HOME_DIR, '.config', 'opencode', 'cli.json');
+
+app.get('/api/cli-config', (req, res) => {
+    try {
+        const cliPath = getCliConfigPath();
+        if (!fs.existsSync(cliPath)) return res.json({ exists: false, path: cliPath, config: {} });
+        const raw = fs.readFileSync(cliPath, 'utf8');
+        res.json({ exists: true, path: cliPath, config: configProviders.parseJsonText(raw) });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/cli-config', (req, res) => {
+    try {
+        const cliPath = getCliConfigPath();
+        const next = (req.body && req.body.config) || req.body || {};
+        if (!next || typeof next !== 'object' || Array.isArray(next)) {
+            return res.status(400).json({ error: 'Config must be an object' });
+        }
+        atomicWriteFileSync(cliPath, JSON.stringify(next, null, 2));
+        triggerGitHubAutoSync();
+        res.json({ success: true, path: cliPath });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.post('/api/config', (req, res) => {
     try {
-        if (!validatePermissionValue(req.body?.permission)) {
+        // Accept either shape (V1 map or V2 array); forWrite() normalizes to
+        // the detected OpenCode major version on disk.
+        if (!validatePermissionValue(req.body?.permission) || !validatePermissionValue(req.body?.permissions)) {
             return res.status(400).json({ error: ERROR_CODES.INVALID_PERMISSION, code: 'INVALID_PERMISSION' });
         }
         saveConfig(req.body);
         triggerGitHubAutoSync();
-        res.json({ success: true });
+        res.json({ success: true, target: compat.getTargetShape() });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -1799,7 +1890,10 @@ app.get('/api/mcp', (req, res) => {
 
         const mcpObj = {};
         for (const [name, mcp] of mcpMap.entries()) {
-            mcpObj[name] = mcp.config || mcp;
+            const entry = mcp.config || mcp;
+            // Canonical V2 entry + `enabled` alias so older clients keep working.
+            const canonical = compat.normalizeToCanonical({ mcp: { servers: { [name]: entry } } }).mcp.servers[name];
+            mcpObj[name] = { ...canonical, enabled: !canonical.disabled };
         }
         res.json(mcpObj);
     } catch (err) {
@@ -1826,8 +1920,10 @@ app.get('/api/commands', (req, res) => {
                 if (!commandMap.has(name)) {
                     commandMap.set(name, {
                         name,
-                        content: cmdConfig.template || cmdConfig,
-                        description: cmdConfig.description || (typeof cmdConfig === 'string' ? cmdConfig.slice(0, 100).replace(/\n/g, ' ') : ''),
+                        content: (cmdConfig && cmdConfig.template) || cmdConfig,
+                        description: (cmdConfig && cmdConfig.description) || (typeof cmdConfig === 'string' ? cmdConfig.slice(0, 100).replace(/\n/g, ' ') : ''),
+                        // Keep the full JSON entry so agent/model/subagent survive.
+                        config: (cmdConfig && typeof cmdConfig === 'object') ? cmdConfig : undefined,
                         source: 'json-config'
                     });
                 }
@@ -1836,10 +1932,28 @@ app.get('/api/commands', (req, res) => {
 
         const commandsObj = {};
         for (const [name, cmd] of commandMap.entries()) {
+            // Full entry first (markdown frontmatter / JSON config), template-only fallback.
+            const raw = (cmd.config && typeof cmd.config === 'object') ? cmd.config : {
+                template: cmd.content ?? cmd.template,
+                description: cmd.description,
+                agent: cmd.agent,
+                model: cmd.model,
+                variant: cmd.variant,
+                subagent: cmd.subagent,
+                subtask: cmd.subtask,
+            };
+            const normalized = compat.normalizeToCanonical({ commands: { [name]: raw } }).commands[name];
+            const entry = { ...normalized };
+            // Keep V1 `subtask` alias alongside V2 `subagent` for older clients.
+            if (entry.subagent !== undefined && entry.subtask === undefined) entry.subtask = entry.subagent;
             commandsObj[name] = {
                 name,
-                template: cmd.content || cmd.template,
-                description: cmd.description,
+                template: entry.template || cmd.content || cmd.template,
+                description: entry.description || cmd.description,
+                agent: entry.agent,
+                model: entry.model,
+                subagent: entry.subagent,
+                subtask: entry.subtask,
                 source: cmd.source,
                 path: cmd.path,
                 root: cmd.root
@@ -1878,15 +1992,13 @@ app.post('/api/agents', (req, res) => {
         if (!isSafeAgentName(name)) return res.status(400).json({ error: ERROR_CODES.INVALID_AGENT_NAME, code: 'INVALID_AGENT_NAME' });
 
         const config = loadConfig() || {};
-        if (!config.agent) config.agent = {};
+        if (!config.agents) config.agents = {};
 
-        const normalizedConfig = { ...(agentConfig || {}) };
-        if (normalizedConfig.permissions && !normalizedConfig.permission) {
-            normalizedConfig.permission = normalizedConfig.permissions;
-            delete normalizedConfig.permissions;
-        }
+        // Accept either V1 or V2 agent shapes; store canonical V2 (saveConfig
+        // converts to the detected OpenCode major version on disk).
+        const canonicalEntry = compat.normalizeToCanonical({ agents: { [name]: { ...(agentConfig || {}) } } }).agents[name];
 
-        const shouldWriteMarkdown = source === 'markdown' || !!normalizedConfig?.mode;
+        const shouldWriteMarkdown = source === 'markdown' || !!canonicalEntry?.mode;
         if (shouldWriteMarkdown) {
             const configPath = getConfigPath();
             const baseDir = configPath ? path.dirname(configPath) : HOME_DIR;
@@ -1895,31 +2007,30 @@ app.post('/api/agents', (req, res) => {
             const targetDir = scope === 'project' ? projectDir : globalDir;
             if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
 
+            // V2-native frontmatter: body holds the system prompt; no `system`
+            // field needed in frontmatter. Legacy aliases translated above.
             const frontmatter = {
-                description: normalizedConfig?.description,
-                mode: normalizedConfig?.mode,
-                model: normalizedConfig?.model,
-                variant: normalizedConfig?.variant,
-                temperature: normalizedConfig?.temperature,
-                top_p: normalizedConfig?.top_p,
-                color: normalizedConfig?.color,
-                tools: normalizedConfig?.tools,
-                permission: normalizedConfig?.permission,
-                steps: normalizedConfig?.steps ?? normalizedConfig?.maxSteps,
-                disable: normalizedConfig?.disable,
-                hidden: normalizedConfig?.hidden,
-                options: normalizedConfig?.options
+                description: canonicalEntry?.description,
+                mode: canonicalEntry?.mode,
+                model: canonicalEntry?.model,
+                permissions: canonicalEntry?.permissions,
+                steps: canonicalEntry?.steps,
+                disabled: canonicalEntry?.disabled,
+                hidden: canonicalEntry?.hidden,
+                color: canonicalEntry?.color,
+                request: canonicalEntry?.request
             };
+            Object.keys(frontmatter).forEach((k) => frontmatter[k] === undefined && delete frontmatter[k]);
 
-            const markdown = buildAgentMarkdown(frontmatter, normalizedConfig?.prompt || '');
+            const markdown = buildAgentMarkdown(frontmatter, canonicalEntry?.system || canonicalEntry?.prompt || '');
             atomicWriteFileSync(path.join(targetDir, `${name}.md`), markdown);
 
-            if (config.agent[name]) {
-                delete config.agent[name];
+            if (config.agents[name]) {
+                delete config.agents[name];
                 saveConfig(config);
             }
         } else {
-            config.agent[name] = normalizedConfig;
+            config.agents[name] = canonicalEntry;
             saveConfig(config);
         }
 
@@ -1938,14 +2049,10 @@ app.put('/api/agents/:name', (req, res) => {
             return res.status(400).json({ error: ERROR_CODES.INVALID_AGENT_NAME, code: 'INVALID_AGENT_NAME' });
         }
 
-        const normalizedConfig = { ...(agentConfig || {}) };
-        if (normalizedConfig.permissions && !normalizedConfig.permission) {
-            normalizedConfig.permission = normalizedConfig.permissions;
-            delete normalizedConfig.permissions;
-        }
+        const canonicalEntry = compat.normalizeToCanonical({ agents: { [name]: { ...(agentConfig || {}) } } }).agents[name];
 
         const config = loadConfig() || {};
-        if (!config.agent) config.agent = {};
+        if (!config.agents) config.agents = {};
 
         const markdownDirs = getAgentDirs().filter((d) => fs.existsSync(d));
         const markdownPath = markdownDirs
@@ -1954,24 +2061,21 @@ app.put('/api/agents/:name', (req, res) => {
 
         if (markdownPath) {
             const frontmatter = {
-                description: normalizedConfig?.description,
-                mode: normalizedConfig?.mode,
-                model: normalizedConfig?.model,
-                variant: normalizedConfig?.variant,
-                temperature: normalizedConfig?.temperature,
-                top_p: normalizedConfig?.top_p,
-                color: normalizedConfig?.color,
-                tools: normalizedConfig?.tools,
-                permission: normalizedConfig?.permission,
-                steps: normalizedConfig?.steps ?? normalizedConfig?.maxSteps,
-                disable: normalizedConfig?.disable,
-                hidden: normalizedConfig?.hidden,
-                options: normalizedConfig?.options
+                description: canonicalEntry?.description,
+                mode: canonicalEntry?.mode,
+                model: canonicalEntry?.model,
+                permissions: canonicalEntry?.permissions,
+                steps: canonicalEntry?.steps,
+                disabled: canonicalEntry?.disabled,
+                hidden: canonicalEntry?.hidden,
+                color: canonicalEntry?.color,
+                request: canonicalEntry?.request
             };
-            const markdown = buildAgentMarkdown(frontmatter, normalizedConfig?.prompt || '');
+            Object.keys(frontmatter).forEach((k) => frontmatter[k] === undefined && delete frontmatter[k]);
+            const markdown = buildAgentMarkdown(frontmatter, canonicalEntry?.system || canonicalEntry?.prompt || '');
             atomicWriteFileSync(markdownPath, markdown);
         } else {
-            config.agent[name] = normalizedConfig;
+            config.agents[name] = canonicalEntry;
             saveConfig(config);
         }
 
@@ -2004,7 +2108,11 @@ app.delete('/api/agents/:name', (req, res) => {
 
         if (agent.sourceProvider === 'opencode') {
             const config = loadConfig() || {};
-            if (config.agent && config.agent[name]) {
+            if (config.agents && config.agents[name]) {
+                delete config.agents[name];
+                saveConfig(config);
+            } else if (config.agent && config.agent[name]) {
+                // Legacy key fallback (pre-canonical configs).
                 delete config.agent[name];
                 saveConfig(config);
             }
@@ -2129,7 +2237,12 @@ app.post('/api/project/rules', (req, res) => {
         }
 
         atomicWriteFileSync(targetPath, content || '');
-        res.json({ success: true, path: targetPath, source: targetName });
+        // V2 only discovers AGENTS.md — a CLAUDE.md fallback is ignored by the
+        // V2 runtime (kept on disk so v1 fallback readers still see it).
+        const warning = targetName === 'CLAUDE.md' && compat.getTargetShape() === 'v2'
+            ? 'OpenCode v2 only reads AGENTS.md; move this guidance into AGENTS.md so it takes effect.'
+            : undefined;
+        res.json({ success: true, path: targetPath, source: targetName, warning });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -2292,7 +2405,8 @@ function saveConfigForRestore(config) {
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
         cp = path.join(dir, 'opencode.json');
     }
-    atomicWriteFileSync(cp, JSON.stringify(config, null, 2));
+    // Backups store the canonical shape; convert to the detected runtime shape.
+    atomicWriteFileSync(cp, JSON.stringify(compat.forWrite(config, compat.getTargetShape()), null, 2));
 }
 
 function restoreFromBackup(backup, studio) {
@@ -4218,13 +4332,13 @@ app.post('/api/model-policy', (req, res) => {
 
         saveStudioConfig(studio);
 
-        // Install or remove the guardrail plugin
+        // Install or remove the guardrail plugin (version-matched: v2 primary, v1 fallback)
         const pluginDir = getActivePluginDir();
         if (pluginDir) {
             if (studio.modelPolicy.enabled) {
                 if (!fs.existsSync(pluginDir)) fs.mkdirSync(pluginDir, { recursive: true });
                 const pluginPath = path.join(pluginDir, GUARDRAIL_PLUGIN_NAME);
-                const pluginCode = modelPolicy.generateGuardrailPlugin(studio.modelPolicy);
+                const pluginCode = modelPolicy.generateGuardrailPlugin(studio.modelPolicy, { target: compat.getTargetShape() });
                 atomicWriteFileSync(pluginPath, pluginCode);
             } else {
                 const pluginPath = path.join(pluginDir, GUARDRAIL_PLUGIN_NAME);
@@ -4236,7 +4350,7 @@ app.post('/api/model-policy', (req, res) => {
 
         // Run validation to return any current violations
         const config = loadConfig() || {};
-        const providersConfig = (config.model && config.model.providers) || config.providers || {};
+        const providersConfig = compat.readProviders(config);
         const agents = aggregateAgents({ roots: getSearchRoots(), agentDirs: getAgentDirs(), activeConfigDir: getConfigPath() ? path.dirname(getConfigPath()) : null });
         const violations = modelPolicy.validateDelegationPolicy(agents, studio.modelPolicy, providersConfig);
 
@@ -4252,7 +4366,7 @@ app.get('/api/model-policy/validate', (req, res) => {
         const policy = studio.modelPolicy || { enabled: false, customLocalProviders: [], customCloudProviders: [] };
 
         const config = loadConfig() || {};
-        const providersConfig = (config.model && config.model.providers) || config.providers || {};
+        const providersConfig = compat.readProviders(config);
         const agents = aggregateAgents({ roots: getSearchRoots(), agentDirs: getAgentDirs(), activeConfigDir: getConfigPath() ? path.dirname(getConfigPath()) : null });
 
         // Classify all agents
@@ -5738,18 +5852,62 @@ function httpsGetBuffer(url) {
     });
 }
 
+function providersOf(config) {
+    if (!config || typeof config !== 'object') return {};
+    if (config.providers && typeof config.providers === 'object') return config.providers;
+    if (config.provider && typeof config.provider === 'object') return config.provider;
+    return {};
+}
+
+function providerKeyOf(config) {
+    if (config && config.providers && typeof config.providers === 'object') return 'providers';
+    if (config && config.provider && typeof config.provider === 'object') return 'provider';
+    // Default to the detected OpenCode major version's native key.
+    return compat.getTargetShape() === 'v1' ? 'provider' : 'providers';
+}
+
+function providerApiKeyOf(prov) {
+    if (!prov || typeof prov !== 'object') return undefined;
+    if (prov.options && typeof prov.options === 'object' && prov.options.apiKey) return prov.options.apiKey;
+    if (prov.settings && typeof prov.settings === 'object' && prov.settings.apiKey) return prov.settings.apiKey;
+    return undefined;
+}
+
+function withProviderApiKey(prov, apiKey) {
+    const next = { ...(prov || {}) };
+    // Write to whichever location already exists; prefer V2 `settings` on v2 target.
+    const hasSettingsKey = next.settings && typeof next.settings === 'object' && next.settings.apiKey !== undefined;
+    const useSettings = hasSettingsKey || (compat.getTargetShape() === 'v2' && !(next.options && next.options.apiKey));
+    if (useSettings) {
+        next.settings = { ...(next.settings || {}), apiKey };
+    } else {
+        next.options = { ...(next.options || {}), apiKey };
+    }
+    return next;
+}
+
+function providerOptsOf(prov) {
+    if (!prov || typeof prov !== 'object') return {};
+    // V1 `options` and V2 `settings` are the same bag for sync purposes (both
+    // carry apiKey/timeouts/baseURL). Merge with settings winning on conflict.
+    return { ...(prov.options || {}), ...(prov.settings || {}) };
+}
+
 function validateRemoteConfig(parsed) {
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        && parsed.provider && typeof parsed.provider === 'object' && !Array.isArray(parsed.provider)
-        && Object.keys(parsed.provider).length > 0;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+    const providers = providersOf(parsed);
+    return Object.keys(providers).length > 0;
 }
 
 // Strip volatile/auth fields so we can compare catalogs meaningfully.
 function stripVolatile(config) {
     const clone = JSON.parse(JSON.stringify(config || {}));
-    if (clone.provider && typeof clone.provider === 'object') {
-        for (const p of Object.values(clone.provider)) {
-            if (p && p.options && typeof p.options === 'object') delete p.options.apiKey;
+    for (const key of ['provider', 'providers']) {
+        if (clone[key] && typeof clone[key] === 'object') {
+            for (const p of Object.values(clone[key])) {
+                if (p && p.options && typeof p.options === 'object') delete p.options.apiKey;
+                if (p && p.settings && typeof p.settings === 'object') delete p.settings.apiKey;
+            }
         }
     }
     return clone;
@@ -5762,14 +5920,14 @@ function stripVolatile(config) {
 // comparisons.
 function catalogView(config, managedIds) {
     const view = { provider: {}, enabled_providers: config && config.enabled_providers ? config.enabled_providers : null };
-    if (config && config.provider && typeof config.provider === 'object') {
-        for (const id of managedIds) {
-            const p = config.provider[id];
-            if (p) {
-                const clone = JSON.parse(JSON.stringify(p));
-                if (clone.options && typeof clone.options === 'object') delete clone.options.apiKey;
-                view.provider[id] = clone;
-            }
+    const providers = providersOf(config);
+    for (const id of managedIds) {
+        const p = providers[id];
+        if (p) {
+            const clone = JSON.parse(JSON.stringify(p));
+            if (clone.options && typeof clone.options === 'object') delete clone.options.apiKey;
+            if (clone.settings && typeof clone.settings === 'object') delete clone.settings.apiKey;
+            view.provider[id] = clone;
         }
     }
     return view;
@@ -5784,19 +5942,22 @@ function catalogView(config, managedIds) {
 // still receiving catalog updates for every OTHER model. apiKeys and
 // provider-level option edits also survive. Nothing local is ever reverted.
 function mergeRemoteConfig(localConfig, remoteConfig, lastSyncedCatalog) {
+    const remoteProviders = providersOf(remoteConfig);
+    const baseProviders = providersOf(lastSyncedCatalog);
     const managedIds = new Set([
-        ...Object.keys((remoteConfig && remoteConfig.provider) || {}),
-        ...Object.keys((lastSyncedCatalog && lastSyncedCatalog.provider) || {})
+        ...Object.keys(remoteProviders),
+        ...Object.keys(baseProviders)
     ]);
 
     const merged = { ...(localConfig || {}) };
-    const nextProviders = { ...(merged.provider || {}) };
+    const localProviders = providersOf(localConfig);
+    const nextProviders = { ...localProviders };
     let overrideCount = 0;
 
     for (const id of managedIds) {
-        const localProv = localConfig && localConfig.provider && localConfig.provider[id];
-        const baseProv = lastSyncedCatalog && lastSyncedCatalog.provider && lastSyncedCatalog.provider[id];
-        const remoteProv = remoteConfig.provider && remoteConfig.provider[id];
+        const localProv = localProviders[id];
+        const baseProv = baseProviders[id];
+        const remoteProv = remoteProviders[id];
 
         if (!remoteProv) {
             // Provider removed from catalog upstream.
@@ -5855,9 +6016,10 @@ function mergeRemoteConfig(localConfig, remoteConfig, lastSyncedCatalog) {
 
         // Provider-level options (timeout, chunkTimeout, baseURL, etc.):
         // remote wins, except the user's apiKey and any option keys the user changed.
-        const localOpts = (localProv && localProv.options) || {};
-        const baseOpts = (baseProv && baseProv.options) || {};
-        const remoteOpts = (remoteProv && remoteProv.options) || {};
+        // V1 `options` and V2 `settings` are merged into one bag for comparison.
+        const localOpts = providerOptsOf(localProv);
+        const baseOpts = providerOptsOf(baseProv);
+        const remoteOpts = providerOptsOf(remoteProv);
         const nextOpts = { ...remoteOpts };
         for (const [k, v] of Object.entries(localOpts)) {
             if (k === 'apiKey') { nextOpts.apiKey = v; continue; }
@@ -5867,12 +6029,34 @@ function mergeRemoteConfig(localConfig, remoteConfig, lastSyncedCatalog) {
                 overrideCount++;
             }
         }
-        next.options = nextOpts;
+        // Write the merged bag back to whichever key the remote entry uses
+        // (keeps v1 catalogs on `options`, v2 catalogs on `settings`).
+        if (remoteProv && remoteProv.settings && typeof remoteProv.settings === 'object' && !remoteProv.options) {
+            next.settings = nextOpts;
+            delete next.options;
+        } else if (remoteProv && remoteProv.options && typeof remoteProv.options === 'object' && !remoteProv.settings) {
+            next.options = nextOpts;
+            delete next.settings;
+        } else {
+            // Both or neither: consolidate into `options`, drop stale `settings`
+            // so the two bags can't diverge (comparisons merge both bags).
+            next.options = nextOpts;
+            delete next.settings;
+        }
         next.models = nextModels;
         nextProviders[id] = next;
     }
 
-    merged.provider = nextProviders;
+    const writeKey = localConfig && (localConfig.providers || localConfig.provider)
+        ? (localConfig.providers ? 'providers' : 'provider')
+        : remoteConfig && remoteConfig.providers ? 'providers' : providerKeyOf(localConfig);
+    merged[writeKey] = nextProviders;
+    // Mirror to the other alias when either side uses it, so mixed-shape
+    // readers keep working (V2 normalizes both in memory anyway).
+    const otherKey = writeKey === 'providers' ? 'provider' : 'providers';
+    if ((localConfig && localConfig[otherKey]) || (remoteConfig && remoteConfig[otherKey])) {
+        merged[otherKey] = nextProviders;
+    }
 
     // enabled_providers: catalog-managed, but respect a local override.
     const localEnabled = localConfig && localConfig.enabled_providers;
@@ -5930,25 +6114,27 @@ async function performLinkedSync(profileName, source, { force = false } = {}) {
     if (force) {
         // Reset to catalog: pure remote + preserved apiKeys + unmanaged content.
         merged = { ...remoteConfig };
-        if (localConfig && localConfig.provider) {
-            for (const [id, localProv] of Object.entries(localConfig.provider)) {
-                const localKey = localProv && localProv.options && localProv.options.apiKey;
-                if (localKey && merged.provider && merged.provider[id]) {
-                    merged.provider[id] = { ...merged.provider[id] };
-                    merged.provider[id].options = { ...(merged.provider[id].options || {}), apiKey: localKey };
+        const mergedProviders = providersOf(merged);
+        const localProviders = providersOf(localConfig);
+        const remoteProviders = providersOf(remoteConfig);
+        if (localConfig && Object.keys(localProviders).length > 0) {
+            for (const [id, localProv] of Object.entries(localProviders)) {
+                const localKey = providerApiKeyOf(localProv);
+                if (localKey && mergedProviders[id]) {
+                    mergedProviders[id] = withProviderApiKey(mergedProviders[id], localKey);
                 }
             }
             // Preserve unmanaged providers
-            for (const [id, localProv] of Object.entries(localConfig.provider)) {
-                if (!(remoteConfig.provider && remoteConfig.provider[id])) {
-                    merged.provider[id] = localProv;
+            for (const [id, localProv] of Object.entries(localProviders)) {
+                if (!remoteProviders[id]) {
+                    mergedProviders[id] = localProv;
                 }
             }
         }
         // Preserve top-level settings the catalog doesn't define
         if (localConfig) {
             for (const [key, val] of Object.entries(localConfig)) {
-                if (key !== 'provider' && key !== 'enabled_providers' && !(key in (remoteConfig || {}))) {
+                if (key !== 'provider' && key !== 'providers' && key !== 'enabled_providers' && !(key in (remoteConfig || {}))) {
                     merged[key] = val;
                 }
             }
@@ -5958,6 +6144,10 @@ async function performLinkedSync(profileName, source, { force = false } = {}) {
         merged = result.merged;
         overrideCount = result.overrides.count;
     }
+
+    // Write in the detected OpenCode shape (v2 primary, v1 fallback) so a
+    // v2-shaped catalog never lands verbatim on a v1 runtime.
+    merged = compat.forWrite(merged, compat.getTargetShape());
 
     const changed = JSON.stringify(merged) !== JSON.stringify(localConfig);
 
@@ -6084,7 +6274,10 @@ app.post('/api/profiles/from-preset', async (req, res) => {
             fetchError = err.message;
         }
 
-        profileManager.createProfileWithConfig(name, initialConfig || { "$schema": "https://opencode.ai/config.json" });
+        profileManager.createProfileWithConfig(name, initialConfig
+            // Store in the detected OpenCode shape (v2 primary, v1 fallback).
+            ? compat.forWrite(initialConfig, compat.getTargetShape())
+            : { "$schema": "https://opencode.ai/config.json" });
         // Write the link marker directly (markSynced requires an existing marker)
         profileManager.writeLinkedSource(name, initialConfig ? {
             configUrl: preset.configUrl,
@@ -6132,23 +6325,37 @@ app.put('/api/providers/:id/apikey', (req, res) => {
         if (!config) {
             return res.status(404).json({ error: ERROR_CODES.CONFIG_NOT_FOUND, code: 'CONFIG_NOT_FOUND' });
         }
-        if (!config.provider || !config.provider[providerId]) {
+        // Canonical config uses `providers` (V2) with apiKey under `settings`;
+        // legacy `provider`/`options` shapes are merged by loadConfig.
+        const providers = config.providers || config.provider || {};
+        const canonicalId = compat.canonicalProviderId(providerId);
+        const entry = providers[providerId] || providers[canonicalId];
+        const entryKey = providers[providerId] ? providerId : canonicalId;
+        if (!entry) {
             return res.status(404).json({ error: `Provider "${providerId}" not found in the active configuration` });
         }
 
-        if (!config.provider[providerId].options) {
-            config.provider[providerId].options = {};
-        }
         if (apiKey === '') {
-            delete config.provider[providerId].options.apiKey;
+            if (entry.options) delete entry.options.apiKey;
+            if (entry.settings) delete entry.settings.apiKey;
         } else {
-            config.provider[providerId].options.apiKey = apiKey;
+            // Prefer the location the entry already uses; default to V2 `settings`.
+            if (entry.options && entry.options.apiKey !== undefined && !(entry.settings && entry.settings.apiKey !== undefined)) {
+                entry.options.apiKey = apiKey;
+            } else {
+                entry.settings = { ...(entry.settings || {}), apiKey };
+                if (entry.options) delete entry.options.apiKey;
+            }
         }
+        providers[entryKey] = entry;
+        if (config.providers) config.providers = providers;
+        else config.provider = providers;
 
         saveConfig(config);
         triggerGitHubAutoSync();
         // Never echo the key back — just report whether one is configured now.
-        res.json({ success: true, hasKey: !!config.provider[providerId].options.apiKey });
+        const hasKey = !!(entry.settings?.apiKey || entry.options?.apiKey);
+        res.json({ success: true, hasKey });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -6524,8 +6731,10 @@ const GEMINI_CLIENT_SECRET = process.env.GEMINI_CLIENT_SECRET || "";
 function getGeminiClientId() {
     if (GEMINI_CLIENT_ID) return GEMINI_CLIENT_ID;
     const opencodeCfg = loadConfig();
-    const oauth = opencodeCfg?.mcp?.google?.oauth;
-    return oauth?.clientId || "";
+    // V1 flat `mcp.google` + V2 `mcp.servers.google`; camelCase + snake_case oauth keys.
+    const servers = compat.readMcpServers(opencodeCfg);
+    const oauth = servers.google?.oauth || opencodeCfg?.mcp?.google?.oauth;
+    return oauth?.client_id || oauth?.clientId || "";
 }
 
 const GEMINI_SCOPES = [
@@ -6774,14 +6983,17 @@ app.post('/api/plugins/config/add', (req, res) => {
     const { plugins } = req.body;
     const opencode = loadConfig();
     if (!opencode) return res.status(404).json({ error: ERROR_CODES.CONFIG_NOT_FOUND, code: 'CONFIG_NOT_FOUND' });
-    
-    if (!opencode.plugin) opencode.plugin = [];
+
+    // Canonical V2 `plugins` (server converts to V1 shape on disk for v1 runtimes).
+    if (!opencode.plugins) opencode.plugins = [];
+    const currentIds = new Set(opencode.plugins.map((p) => typeof p === 'string' ? p : p.package || JSON.stringify(p)));
     const added = [];
     const skipped = [];
-    
+
     plugins.forEach(p => {
-        if (!opencode.plugin.includes(p)) {
-            opencode.plugin.push(p);
+        if (!currentIds.has(p)) {
+            opencode.plugins.push(p);
+            currentIds.add(p);
             added.push(p);
             
             const studio = loadStudioConfig();
@@ -6876,14 +7088,17 @@ app.post('/api/presets/:id/apply', (req, res) => {
         }
     }
     
-    // Plugins
+    // Plugins (V1 `plugin` + V2 `plugins` + files in plugin/ and plugins/ dirs)
     if (preset.config.plugins !== undefined && preset.config.plugins !== null) {
         const targetPlugins = new Set(preset.config.plugins);
         if (mode === 'exclusive') {
-            const allPlugins = [...(config.plugin || [])];
-            if (fs.existsSync(pluginDir)) {
-                const files = fs.readdirSync(pluginDir).filter(f => f.endsWith('.js') || f.endsWith('.ts'));
-                allPlugins.push(...files.map(f => f.replace(/\.[^/.]+$/, "")));
+            const allPlugins = (config.plugins || []).map((p) => typeof p === 'string' ? p : p.package);
+            for (const dirName of ['plugin', 'plugins']) {
+                const dir = path.join(configDir, dirName);
+                if (fs.existsSync(dir)) {
+                    const files = fs.readdirSync(dir).filter(f => f.endsWith('.js') || f.endsWith('.ts'));
+                    allPlugins.push(...files.map(f => f.replace(/\.[^/.]+$/, "")));
+                }
             }
             const uniquePlugins = [...new Set(allPlugins)];
             studio.disabledPlugins = uniquePlugins.filter(p => !targetPlugins.has(p));
@@ -6891,18 +7106,24 @@ app.post('/api/presets/:id/apply', (req, res) => {
             studio.disabledPlugins = (studio.disabledPlugins || []).filter(p => !targetPlugins.has(p));
         }
     }
-    
-    // MCPs
+
+    // MCPs (V1 flat map + V2 `servers` nesting; keep enabled/disabled in sync)
     if (preset.config.mcps !== undefined && preset.config.mcps !== null) {
         const targetMcps = new Set(preset.config.mcps);
-        if (config.mcp) {
-            for (const key in config.mcp) {
-                if (mode === 'exclusive') {
-                    config.mcp[key].enabled = targetMcps.has(key);
-                } else { // additive
-                    if (targetMcps.has(key)) config.mcp[key].enabled = true;
-                }
+        const servers = compat.readMcpServers(config);
+        const useServersKey = config.mcp && typeof config.mcp.servers === 'object';
+        for (const key of Object.keys(servers)) {
+            const shouldEnable = mode === 'exclusive' ? targetMcps.has(key) : (targetMcps.has(key) ? true : undefined);
+            if (shouldEnable !== undefined) {
+                servers[key] = { ...servers[key], enabled: shouldEnable, disabled: !shouldEnable };
             }
+        }
+        if (useServersKey) {
+            config.mcp = { ...config.mcp, servers };
+        } else {
+            const { servers: _s, timeout: _t, ...rest } = config.mcp || {};
+            config.mcp = { ...rest, ...servers };
+            if (_t !== undefined) config.mcp.timeout = _t;
         }
     }
     

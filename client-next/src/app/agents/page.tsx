@@ -5,7 +5,8 @@ import { useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { Editor } from "@monaco-editor/react";
 import { toast } from "sonner";
-import type { AgentConfig, AgentInfo, PermissionConfig } from "@/types";
+import type { AgentConfig, AgentInfo, PermissionConfig, PermissionRule } from "@/types";
+import { getAgentSystem, isAgentDisabled, splitModelVariant, joinModelVariant, v1ActionToV2 } from "@/lib/opencode-compat";
 import { getAgents, saveAgent, deleteAgent, toggleAgent, getPromptPresets, savePromptPreset, deletePromptPreset, type PromptPreset, type AgentPresetConfig } from "@/lib/api";
 import { useErrorTranslation } from "@/lib/error-translate";
 import { cn } from "@/lib/utils";
@@ -35,11 +36,11 @@ import { Plus } from "@nsmr/pixelart-react";
 const TOOL_OPTIONS = [
   "read",
   "edit",
-  "bash",
+  "shell",
   "glob",
   "grep",
   "list",
-  "task",
+  "subagent",
   "skill",
   "lsp",
   "todoread",
@@ -60,12 +61,36 @@ const THEME_COLOR_PREVIEW: Record<string, string> = {
 
 const MODES: Array<AgentConfig["mode"]> = ["primary", "subagent", "all"];
 
-function deriveToolsFromPermission(permission: PermissionConfig | undefined, toolOptions: string[]): Record<string, boolean> {
+function deriveToolsFromPermission(permission: PermissionConfig | PermissionRule[] | undefined, toolOptions: string[]): Record<string, boolean> {
   if (!permission) return {};
+  if (Array.isArray(permission)) {
+    // V2 ordered rules: last matching rule wins — evaluate in order.
+    const tools: Record<string, boolean> = {};
+    for (const tool of toolOptions) tools[tool] = false;
+    for (const rule of permission) {
+      if (!rule || typeof rule !== 'object') continue;
+      const action = v1ActionToV2(rule.action);
+      const targets = toolOptions.filter((t) => t === action || action === '*');
+      for (const t of targets) {
+        if (rule.resource === '*' || rule.resource === undefined) {
+          tools[t] = rule.effect === 'allow';
+        }
+      }
+    }
+    return tools;
+  }
   const wildcard = permission["*"];
   const tools: Record<string, boolean> = {};
   for (const tool of toolOptions) {
-    const perm = permission[tool as keyof PermissionConfig];
+    // Canonical action first, then V1 aliases (bash->shell, task->subagent, write/patch->edit).
+    const aliases: Record<string, string[]> = { shell: ["bash"], subagent: ["task"], edit: ["write", "patch"] };
+    let perm = permission[tool as keyof PermissionConfig];
+    if (perm === undefined) {
+      for (const alias of aliases[tool] ?? []) {
+        const v = permission[alias as keyof PermissionConfig];
+        if (v !== undefined) { perm = v; break; }
+      }
+    }
     if (perm === "allow") {
       tools[tool] = true;
     } else if (perm === "deny") {
@@ -90,7 +115,7 @@ interface AgentFormState {
   color: string;
   prompt: string;
   tools: Record<string, boolean>;
-  permission: PermissionConfig;
+  permission: PermissionConfig | PermissionRule[];
   steps?: number;
   disable?: boolean;
   hidden?: boolean;
@@ -153,6 +178,32 @@ export default function AgentsPage() {
     getPromptPresets().then(setPresets).catch(console.error);
   }, []);
 
+  // Map an AgentInfo (either V1 or V2 shape) into the editor form.
+  const agentToForm = (agent: AgentInfo, nameOverride?: string): AgentFormState => {
+    const { model, variant: splitVariant } = splitModelVariant(agent.model);
+    const perms = agent.permissions ?? agent.permission ?? { "*": "ask" };
+    return {
+      name: nameOverride ?? agent.name,
+      description: agent.description || "",
+      mode: agent.mode || "subagent",
+      model,
+      variant: agent.variant || splitVariant,
+      temperature: agent.temperature ?? (agent.request?.body?.temperature as number) ?? 0.3,
+      top_p: agent.top_p ?? (agent.request?.body?.top_p as number) ?? 0,
+      color: agent.color || "",
+      prompt: getAgentSystem(agent),
+      tools: agent.tools && Object.keys(agent.tools).length > 0
+        ? agent.tools
+        : deriveToolsFromPermission(perms, TOOL_OPTIONS),
+      permission: perms,
+      steps: agent.steps ?? agent.maxSteps,
+      disable: isAgentDisabled(agent),
+      hidden: agent.hidden,
+      source: agent.source === "json" ? "json" : "markdown",
+      scope: "global",
+    };
+  };
+
   const openEditor = (agent?: AgentInfo) => {
     if (!agent) {
       setEditing(null);
@@ -162,26 +213,7 @@ export default function AgentsPage() {
     }
 
     setEditing(agent);
-    setForm({
-      name: agent.name,
-      description: agent.description || "",
-      mode: agent.mode || "subagent",
-      model: agent.model || "",
-      variant: agent.variant || "",
-      temperature: agent.temperature ?? 0.3,
-      top_p: agent.top_p ?? 0,
-      color: agent.color || "",
-      prompt: agent.prompt || "",
-      tools: agent.tools && Object.keys(agent.tools).length > 0
-        ? agent.tools
-        : deriveToolsFromPermission(agent.permission || agent.permissions, TOOL_OPTIONS),
-      permission: agent.permission || agent.permissions || { "*": "ask" },
-      steps: agent.steps ?? agent.maxSteps,
-      disable: agent.disable,
-      hidden: agent.hidden,
-      source: agent.source === "json" ? "json" : "markdown",
-      scope: "global",
-    });
+    setForm(agentToForm(agent));
     setOpen(true);
   };
 
@@ -191,19 +223,23 @@ export default function AgentsPage() {
       return;
     }
 
+    // Canonical V2 payload (server converts to V1 shape when a V1 runtime is
+    // detected): model joined with #variant, system prompt, disabled flag,
+    // ordered permissions array, request body for model options.
+    const body: Record<string, unknown> = {};
+    if (form.temperature !== undefined && form.temperature !== 0.3) body.temperature = form.temperature;
+    if (form.top_p) body.top_p = form.top_p;
     const payload: AgentConfig = {
       description: form.description || undefined,
       mode: form.mode || "subagent",
-      model: form.model || undefined,
-      variant: form.variant || undefined,
-      temperature: form.temperature,
-      top_p: form.top_p || undefined,
+      model: joinModelVariant(form.model, form.variant) || undefined,
       color: form.color || undefined,
-      prompt: form.prompt || "",
-      permission: form.permission,
+      system: form.prompt || "",
+      permissions: form.permission,
       steps: form.steps,
-      disable: form.disable,
+      disabled: form.disable,
       hidden: form.hidden,
+      ...(Object.keys(body).length > 0 ? { request: { body } } : {}),
     };
 
     try {
@@ -256,26 +292,7 @@ export default function AgentsPage() {
 
   const handleDuplicate = (agent: AgentInfo) => {
     setEditing(null);
-    setForm({
-      name: `${agent.name}-copy`,
-      description: agent.description || "",
-      mode: agent.mode || "subagent",
-      model: agent.model || "",
-      variant: agent.variant || "",
-      temperature: agent.temperature ?? 0.3,
-      top_p: agent.top_p ?? 0,
-      color: agent.color || "",
-      prompt: agent.prompt || "",
-      tools: agent.tools && Object.keys(agent.tools).length > 0
-        ? { ...agent.tools }
-        : deriveToolsFromPermission(agent.permission || agent.permissions, TOOL_OPTIONS),
-      permission: agent.permission || agent.permissions || { "*": "ask" },
-      steps: agent.steps ?? agent.maxSteps,
-      disable: false,
-      hidden: agent.hidden,
-      source: agent.source === "json" ? "json" : "markdown",
-      scope: "global",
-    });
+    setForm({ ...agentToForm(agent, `${agent.name}-copy`), disable: false });
     setOpen(true);
   };
 

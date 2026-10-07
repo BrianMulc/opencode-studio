@@ -4,7 +4,14 @@ import { Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { useApp } from "@/lib/context";
-import api, { getPaths, setConfigPath, getBackup, restoreBackup, getGitHubBackupStatus, backupToGitHub, restoreFromGitHub, setGitHubAutoSync, checkForUpdate, performUpdate, getModelPolicy, saveModelPolicy, validateModelPolicy, type PathsInfo, type BackupData, type UpdateCheckResult, type ModelPolicy as ModelPolicyType, type DelegationViolation, type AgentClassification } from "@/lib/api";
+import api, { getPaths, setConfigPath, getBackup, restoreBackup, getGitHubBackupStatus, backupToGitHub, restoreFromGitHub, setGitHubAutoSync, checkForUpdate, performUpdate, getModelPolicy, saveModelPolicy, validateModelPolicy, getOpencodeVersion, getCliConfig, saveCliConfig, type PathsInfo, type BackupData, type UpdateCheckResult, type ModelPolicy as ModelPolicyType, type DelegationViolation, type AgentClassification } from "@/lib/api";
+import {
+  getUpdatePolicy,
+  getSnapshotsEnabled,
+  getSubagentDepth,
+  getCompactionKeepTokens,
+  getCompactionBuffer,
+} from "@/lib/opencode-compat";
 import { markUpdateInProgress, clearUpdateInProgress } from "@/lib/update-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,10 +41,11 @@ import { PageHelp } from "@/components/page-help";
 import { toast } from "sonner";
 import Editor from "@monaco-editor/react";
 import { useTheme } from "next-themes";
-import type { OpencodeConfig, GitHubBackupStatus } from "@/types";
+import type { OpencodeConfig, GitHubBackupStatus, OpencodeVersionInfo, CliConfig, PermissionRule } from "@/types";
 
 const THEMES = ["dark", "light", "auto"] as const;
 const SHARE_OPTIONS = ["manual", "auto", "disabled"] as const;
+const UPDATE_OPTIONS = ["disable", "notify", "auto"] as const;
 
 const ESSENTIAL_KEYBINDS = [
   ["leader", "Leader key"],
@@ -103,6 +111,12 @@ const [systemPrompt, setSystemPrompt] = useState("");
   const [policyValidation, setPolicyValidation] = useState<{ agents: AgentClassification[]; violations: DelegationViolation[]; localProviders: string[]; cloudProviders: string[] } | null>(null);
   const [savingPolicy, setSavingPolicy] = useState(false);
 
+  // OpenCode version (v2 primary, v1 fallback) + v2 terminal client config.
+  const [opencodeVersion, setOpencodeVersion] = useState<OpencodeVersionInfo | null>(null);
+  const [cliConfig, setCliConfig] = useState<CliConfig>({});
+  const [cliExists, setCliExists] = useState(false);
+  const [savingCli, setSavingCli] = useState(false);
+
 
   const toggleSection = (section: string) => {
     setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
@@ -126,6 +140,12 @@ const [systemPrompt, setSystemPrompt] = useState("");
     getPaths().then(setPathsInfo).catch(console.error);
     loadSystemPrompt();
     handleCheckUpdate(true); // silent - no toast, just populates the UI
+
+    getOpencodeVersion().then(setOpencodeVersion).catch(console.error);
+    getCliConfig().then((r) => {
+      setCliConfig(r.config || {});
+      setCliExists(r.exists);
+    }).catch(console.error);
 
     getModelPolicy().then(setModelPolicy).catch(console.error);
     validateModelPolicy().then(v => setPolicyValidation({ agents: v.agents, violations: v.violations, localProviders: v.localProviders, cloudProviders: v.cloudProviders })).catch(console.error);
@@ -168,11 +188,38 @@ const [systemPrompt, setSystemPrompt] = useState("");
   const updateConfig = async (updates: Partial<OpencodeConfig>) => {
     if (!config) return;
     try {
-      await saveConfig({ ...config, ...updates });
+      // Drop superseded legacy aliases when the canonical V2 key is set, so
+      // the two shapes never diverge on disk (V2 wins on conflict anyway).
+      const next: OpencodeConfig = { ...config, ...updates };
+      if (updates.permissions !== undefined) delete next.permission;
+      if (updates.permission !== undefined && updates.permissions === undefined && next.permissions !== undefined) delete next.permissions;
+      if (updates.update !== undefined) delete next.autoupdate;
+      if (updates.snapshots !== undefined) delete next.snapshot;
+      if (updates.media !== undefined) delete next.attachment;
+      if (updates.providers !== undefined) delete next.provider;
+      if (updates.agents !== undefined) { delete (next as Record<string, unknown>).agent; delete (next as Record<string, unknown>).mode; }
+      if (updates.commands !== undefined) delete next.command;
+      if (updates.plugins !== undefined) delete next.plugin;
+      await saveConfig(next);
       toast.success(t('toast.settingsSaved'));
     } catch (err: any) {
       const msg = err.response?.data?.error || err.message || t('unknownError');
       toast.error(t('toast.failedToSaveSettings', { msg }));
+    }
+  };
+
+  const updateCliConfig = async (updates: Partial<CliConfig>) => {
+    const next = { ...cliConfig, ...updates };
+    setCliConfig(next);
+    try {
+      setSavingCli(true);
+      await saveCliConfig(next);
+      setCliExists(true);
+      toast.success(t('toast.settingsSaved'));
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || err.message);
+    } finally {
+      setSavingCli(false);
     }
   };
 
@@ -396,7 +443,15 @@ const [systemPrompt, setSystemPrompt] = useState("");
                 </div>
                 <ChevronDown className={`h-5 w-5 transition-transform duration-200 ${openSections.general ? "rotate-180" : ""}`} />
               </div>
-              <CardDescription>{t('general.description')}</CardDescription>
+              <CardDescription>
+                {t('general.description')}
+                {opencodeVersion && (
+                  <span className="block mt-1 text-xs font-mono">
+                    OpenCode {opencodeVersion.raw || 'unknown'} detected — editing in {opencodeVersion.target === 'v2' ? 'V2 native' : 'V1 fallback'} shape
+                    {opencodeVersion.available ? '' : ' (binary not found, assuming V2)'}
+                  </span>
+                )}
+              </CardDescription>
             </CardHeader>
           </CollapsibleTrigger>
           <CollapsibleContent className="animate-scale-in">
@@ -404,19 +459,41 @@ const [systemPrompt, setSystemPrompt] = useState("");
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label>{t('general.theme')}</Label>
-                  <Select
-                    value={config?.theme || "dark"}
-                    onValueChange={(v) => updateConfig({ theme: v as typeof THEMES[number] })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {THEMES.map((theme) => (
-                        <SelectItem key={theme} value={theme}>{theme}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {opencodeVersion?.target === 'v2' ? (
+                    <>
+                      <Select
+                        value={(cliConfig.theme as string) || config?.theme || "dark"}
+                        onValueChange={(v) => updateCliConfig({ theme: v })}
+                        disabled={savingCli}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {THEMES.map((theme) => (
+                            <SelectItem key={theme} value={theme}>{theme}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        {cliExists ? 'Stored in ~/.config/opencode/cli.json (V2 terminal client).' : 'V2 stores the theme in the global cli.json — saving creates it.'}
+                      </p>
+                    </>
+                  ) : (
+                    <Select
+                      value={config?.theme || "dark"}
+                      onValueChange={(v) => updateConfig({ theme: v as typeof THEMES[number] })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {THEMES.map((theme) => (
+                          <SelectItem key={theme} value={theme}>{theme}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -461,18 +538,26 @@ const [systemPrompt, setSystemPrompt] = useState("");
                     onChange={(e) => updateConfig({ small_model: e.target.value || undefined })}
                     placeholder={t('general.smallModelPlaceholder')}
                   />
+                  <p className="text-xs text-muted-foreground">V2 equivalent: the model of the built-in title agent (agents.title.model). This field keeps working in V2.</p>
                 </div>
-              </div>
 
-              <div className="flex items-center justify-between p-4 bg-background rounded-lg">
-                <div>
-                  <Label>{t('general.autoUpdate')}</Label>
-                  <p className="text-sm text-muted-foreground">{t('general.autoUpdateDescription')}</p>
+                <div className="space-y-2">
+                  <Label>Update policy</Label>
+                  <Select
+                    value={getUpdatePolicy(config) || "notify"}
+                    onValueChange={(v) => updateConfig({ update: v as typeof UPDATE_OPTIONS[number] })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {UPDATE_OPTIONS.map((s) => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">V2 native (disable/notify/auto). The V1 autoupdate flag is converted automatically.</p>
                 </div>
-                <Switch
-                  checked={config?.autoupdate === true}
-                  onCheckedChange={(v) => updateConfig({ autoupdate: v })}
-                />
               </div>
 
               <div className="flex items-center justify-between p-4 bg-background rounded-lg">
@@ -481,8 +566,8 @@ const [systemPrompt, setSystemPrompt] = useState("");
                   <p className="text-sm text-muted-foreground">{t('general.snapshotDescription')}</p>
                 </div>
                 <Switch
-                  checked={config?.snapshot === true}
-                  onCheckedChange={(v) => updateConfig({ snapshot: v })}
+                  checked={getSnapshotsEnabled(config) !== false}
+                  onCheckedChange={(v) => updateConfig({ snapshots: v })}
                 />
               </div>
             </CardContent>
@@ -557,8 +642,11 @@ const [systemPrompt, setSystemPrompt] = useState("");
           <CollapsibleContent className="animate-scale-in">
             <CardContent className="space-y-4 pt-0">
               <PermissionEditor
-                value={config?.permission || {}}
-                onChange={(next) => updateConfig({ permission: next })}
+                value={config?.permissions ?? config?.permission ?? []}
+                onChange={(next) => {
+                  if (Array.isArray(next)) updateConfig({ permissions: next as PermissionRule[] });
+                  else updateConfig({ permission: next });
+                }}
               />
             </CardContent>
           </CollapsibleContent>
@@ -627,7 +715,7 @@ const [systemPrompt, setSystemPrompt] = useState("");
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">{t('advanced.logLevelDescription')}</p>
+                  <p className="text-xs text-muted-foreground">{t('advanced.logLevelDescription')} V2 ignores this field (use OPENCODE_LOG_LEVEL instead).</p>
                 </div>
 
                 <div className="space-y-2">
@@ -635,11 +723,11 @@ const [systemPrompt, setSystemPrompt] = useState("");
                   <Input
                     type="number"
                     min="0"
-                    value={config?.subagent_depth ?? ""}
-                    onChange={(e) => updateConfig({ subagent_depth: e.target.value ? Number(e.target.value) : undefined })}
+                    value={getSubagentDepth(config) ?? ""}
+                    onChange={(e) => updateConfig({ experimental: { ...config?.experimental, subagent_depth: e.target.value ? Number(e.target.value) : undefined } })}
                     placeholder="1"
                   />
-                  <p className="text-xs text-muted-foreground">{t('advanced.subagentDepthDescription')}</p>
+                  <p className="text-xs text-muted-foreground">{t('advanced.subagentDepthDescription')} Stored as experimental.subagent_depth (V2 native).</p>
                 </div>
               </div>
 
@@ -672,10 +760,14 @@ const [systemPrompt, setSystemPrompt] = useState("");
                       <Label className="text-sm">{t('advanced.compactionReserved')}</Label>
                       <Input
                         type="number"
-                        value={config?.compaction?.reserved ?? ""}
-                        onChange={(e) => updateConfig({ compaction: { ...config?.compaction, reserved: e.target.value ? Number(e.target.value) : undefined } })}
-                        placeholder="10000"
+                        value={getCompactionBuffer(config) ?? ""}
+                        onChange={(e) => {
+                          const v = e.target.value ? Number(e.target.value) : undefined;
+                          updateConfig({ compaction: { ...config?.compaction, reserved: v, buffer: v } });
+                        }}
+                        placeholder="20000"
                       />
+                      <p className="text-xs text-muted-foreground">V2 reserve (buffer). Written to both shapes.</p>
                     </div>
                     <div className="space-y-2">
                       <Label className="text-sm">{t('advanced.compactionTailTurns')}</Label>
@@ -685,17 +777,20 @@ const [systemPrompt, setSystemPrompt] = useState("");
                         value={config?.compaction?.tail_turns ?? ""}
                         onChange={(e) => updateConfig({ compaction: { ...config?.compaction, tail_turns: e.target.value ? Number(e.target.value) : undefined } })}
                       />
-                      <p className="text-xs text-muted-foreground">{t('advanced.compactionTailTurnsDescription')}</p>
+                      <p className="text-xs text-muted-foreground">{t('advanced.compactionTailTurnsDescription')} V2 ignores this field.</p>
                     </div>
                     <div className="space-y-2">
                       <Label className="text-sm">{t('advanced.compactionPreserveTokens')}</Label>
                       <Input
                         type="number"
                         min="0"
-                        value={config?.compaction?.preserve_recent_tokens ?? ""}
-                        onChange={(e) => updateConfig({ compaction: { ...config?.compaction, preserve_recent_tokens: e.target.value ? Number(e.target.value) : undefined } })}
+                        value={getCompactionKeepTokens(config) ?? ""}
+                        onChange={(e) => {
+                          const v = e.target.value ? Number(e.target.value) : undefined;
+                          updateConfig({ compaction: { ...config?.compaction, preserve_recent_tokens: v, keep: { ...config?.compaction?.keep, tokens: v } } });
+                        }}
                       />
-                      <p className="text-xs text-muted-foreground">{t('advanced.compactionPreserveTokensDescription')}</p>
+                      <p className="text-xs text-muted-foreground">{t('advanced.compactionPreserveTokensDescription')} Written to both shapes.</p>
                     </div>
                   </div>
                 </div>
@@ -748,6 +843,144 @@ const [systemPrompt, setSystemPrompt] = useState("");
                   placeholder={t('advanced.instructionsPlaceholder')}
                 />
                 <p className="text-xs text-muted-foreground">{t('advanced.instructionsDescription')}</p>
+              </div>
+
+              <div className="space-y-4 pt-4 border-t">
+                <div>
+                  <Label>V2 settings</Label>
+                  <p className="text-sm text-muted-foreground mb-3">Native OpenCode V2 options with no V1 equivalent. Ignored by V1 runtimes.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm">Image attachments (media.image)</Label>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="flex items-center justify-between p-3 bg-background rounded-lg col-span-2 md:col-span-4">
+                      <div>
+                        <Label className="text-sm">Auto-resize oversized images</Label>
+                        <p className="text-xs text-muted-foreground">V1 key: attachment.image — kept in sync automatically.</p>
+                      </div>
+                      <Switch
+                        checked={(config?.media?.image ?? config?.attachment?.image)?.auto_resize !== false}
+                        onCheckedChange={(v) => {
+                          const image = { ...(config?.media?.image ?? config?.attachment?.image), auto_resize: v };
+                          updateConfig({ media: { ...config?.media, image }, attachment: { ...config?.attachment, image } });
+                        }}
+                      />
+                    </div>
+                    {([
+                      ['max_width', '2000'],
+                      ['max_height', '2000'],
+                      ['max_base64_bytes', '5242880'],
+                    ] as const).map(([field, ph]) => (
+                      <div key={field} className="space-y-2">
+                        <Label className="text-sm font-mono">{field}</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={(config?.media?.image ?? config?.attachment?.image)?.[field] ?? ""}
+                          onChange={(e) => {
+                            const v = e.target.value ? Number(e.target.value) : undefined;
+                            const image = { ...(config?.media?.image ?? config?.attachment?.image), [field]: v };
+                            updateConfig({ media: { ...config?.media, image }, attachment: { ...config?.attachment, image } });
+                          }}
+                          placeholder={ph}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm">Web search provider</Label>
+                    <Input
+                      value={typeof config?.websearch === 'object' ? config.websearch.provider || "" : ""}
+                      onChange={(e) => updateConfig({ websearch: e.target.value ? { provider: e.target.value } : undefined })}
+                      placeholder="random"
+                    />
+                    <p className="text-xs text-muted-foreground">Use &quot;random&quot; to select an available provider automatically.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm">Worktree directory</Label>
+                    <Input
+                      value={config?.worktree?.directory || ""}
+                      onChange={(e) => updateConfig({ worktree: e.target.value ? { directory: e.target.value } : undefined })}
+                      placeholder="../worktrees"
+                    />
+                    <p className="text-xs text-muted-foreground">Parent directory for new local worktrees.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-background rounded-lg">
+                  <div>
+                    <Label className="text-sm">Session warming</Label>
+                    <p className="text-xs text-muted-foreground">Keep recently active model sessions warm (4-min idle interval, 30-min window).</p>
+                  </div>
+                  <Switch
+                    checked={!!config?.warming}
+                    onCheckedChange={(v) => updateConfig({ warming: v ? { prompt: "Do not perform any work. Reply with exactly: OK", interval: "4 minutes", duration: "30 minutes" } : undefined })}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm">Policies (experimental.policies)</Label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => updateConfig({ experimental: { ...config?.experimental, policies: [...(config?.experimental?.policies || []), { action: "provider.use", resource: "*", effect: "deny" as const }] } })}
+                    >
+                      Add policy
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Allow/deny provider use or hard-deny permission checks. Global policies override project config.</p>
+                  <div className="space-y-2">
+                    {(config?.experimental?.policies || []).length === 0 && (
+                      <p className="text-xs text-muted-foreground italic">No policies configured.</p>
+                    )}
+                    {(config?.experimental?.policies || []).map((p, i) => (
+                      <div key={i} className="flex flex-col gap-2 md:flex-row md:items-center rounded-md border bg-muted/20 border-border/60 p-3">
+                        <Input className="font-mono h-8 text-xs md:w-[160px]" value={p.action} onChange={(e) => {
+                          const policies = [...(config?.experimental?.policies || [])];
+                          policies[i] = { ...policies[i], action: e.target.value };
+                          updateConfig({ experimental: { ...config?.experimental, policies } });
+                        }} placeholder="provider.use" />
+                        <Input className="font-mono h-8 text-xs flex-1" value={p.resource} onChange={(e) => {
+                          const policies = [...(config?.experimental?.policies || [])];
+                          policies[i] = { ...policies[i], resource: e.target.value };
+                          updateConfig({ experimental: { ...config?.experimental, policies } });
+                        }} placeholder="resource" />
+                        <Select value={p.effect} onValueChange={(v) => {
+                          const policies = [...(config?.experimental?.policies || [])];
+                          policies[i] = { ...policies[i], effect: v as 'allow' | 'deny' };
+                          updateConfig({ experimental: { ...config?.experimental, policies } });
+                        }}>
+                          <SelectTrigger className="md:w-[100px] h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="allow">allow</SelectItem>
+                            <SelectItem value="deny">deny</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => {
+                          const policies = (config?.experimental?.policies || []).filter((_, j) => j !== i);
+                          updateConfig({ experimental: { ...config?.experimental, policies } });
+                        }}>×</Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-background rounded-lg">
+                  <div>
+                    <Label className="text-sm">Portable shell scanner (experimental)</Label>
+                    <p className="text-xs text-muted-foreground">Replaces the default tree-sitter scanner for shell permission checks.</p>
+                  </div>
+                  <Switch
+                    checked={config?.experimental?.portable_shell_scanner === true}
+                    onCheckedChange={(v) => updateConfig({ experimental: { ...config?.experimental, portable_shell_scanner: v || undefined } })}
+                  />
+                </div>
               </div>
             </CardContent>
           </CollapsibleContent>
