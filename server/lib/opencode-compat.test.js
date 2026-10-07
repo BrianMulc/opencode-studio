@@ -282,3 +282,52 @@ describe('triple-check hardening (F1-F5)', () => {
         expect(canonical.commands.c).toBe(42);
     });
 });
+
+describe('inferTargetFromConfig (v1 GUI protection)', () => {
+    it('native v2 keys pin to v2', () => {
+        expect(c.inferTargetFromConfig({ permissions: [] })).toBe('v2');
+        expect(c.inferTargetFromConfig({ providers: {} })).toBe('v2');
+        expect(c.inferTargetFromConfig({ agents: {} })).toBe('v2');
+        expect(c.inferTargetFromConfig({ plugins: [] })).toBe('v2');
+        expect(c.inferTargetFromConfig({ mcp: { servers: {} } })).toBe('v2');
+    });
+
+    it('legacy v1 keys pin to v1', () => {
+        expect(c.inferTargetFromConfig({ permission: {} })).toBe('v1');
+        expect(c.inferTargetFromConfig({ provider: {} })).toBe('v1');
+        expect(c.inferTargetFromConfig({ agent: {}, mode: {} })).toBe('v1');
+        expect(c.inferTargetFromConfig({ command: {} })).toBe('v1');
+        expect(c.inferTargetFromConfig({ plugin: [] })).toBe('v1');
+        expect(c.inferTargetFromConfig({ snapshot: true })).toBe('v1');
+        expect(c.inferTargetFromConfig({ mcp: { myserver: { type: 'local' } } })).toBe('v1');
+        expect(c.inferTargetFromConfig({ experimental: { mcp_timeout: 5 } })).toBe('v1');
+    });
+
+    it('Studio-written v1 files (update kept next to autoupdate) still infer v1', () => {
+        const v1 = c.forWrite({ permissions: [{ action: 'shell', resource: '*', effect: 'ask' }], update: 'auto' }, 'v1');
+        expect(v1.update).toBeDefined();
+        expect(c.inferTargetFromConfig(v1)).toBe('v1');
+    });
+
+    it('empty or signal-free configs default to v2', () => {
+        expect(c.inferTargetFromConfig({})).toBe('v2');
+        expect(c.inferTargetFromConfig(null)).toBe('v2');
+        expect(c.inferTargetFromConfig({ model: 'x', theme: 'dark' })).toBe('v2');
+        // Bare `update` alone is ambiguous (v1 writes keep it too) -> v2 default.
+        expect(c.inferTargetFromConfig({ update: 'auto' })).toBe('v2');
+    });
+
+    it('a v2 user config infers v2 and rewrites to v1 cleanly when forced', () => {
+        const userV2 = {
+            mcp: { servers: { a: { type: 'remote', url: 'http://x', disabled: false } } },
+            permissions: [{ action: 'shell', resource: '*', effect: 'allow' }],
+            plugins: ['p'],
+        };
+        expect(c.inferTargetFromConfig(userV2)).toBe('v2');
+        const v1 = c.forWrite(userV2, 'v1');
+        expect(c.inferTargetFromConfig(v1)).toBe('v1');
+        expect(v1.mcp.a.enabled).toBe(true);
+        expect(v1.permission.bash).toBe('allow');
+        expect(v1.plugin).toEqual(['p']);
+    });
+});

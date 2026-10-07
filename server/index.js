@@ -1173,7 +1173,7 @@ const findRulesFile = () => {
     if (!configPath) return { path: null, source: 'none' };
 
     // V2 only discovers AGENTS.md. V1 also falls back to CLAUDE.md.
-    const target = compat.getTargetShape();
+    const target = getEffectiveTarget();
     const names = target === 'v1' ? ['AGENTS.md', 'CLAUDE.md'] : ['AGENTS.md'];
 
     let dir = path.dirname(configPath);
@@ -1233,8 +1233,33 @@ const loadConfig = () => {
 const saveConfig = (config) => {
     const configPath = getConfigPath();
     if (!configPath) throw new Error('No config path found');
-    atomicWriteFileSync(configPath, JSON.stringify(compat.forWrite(config, compat.getTargetShape()), null, 2));
+    atomicWriteFileSync(configPath, JSON.stringify(compat.forWrite(config, getEffectiveTarget()), null, 2));
 };
+
+// Effective disk-write target: explicit Studio override (`opencodeTarget` in
+// studio.json) first, then the detected binary major version, then inference
+// from the on-disk shape. The inference fallback matters most: when no
+// binary is visible (broken PATH shims, GUI-only installs), blindly assuming
+// v2 would rewrite a v1 user's config into a shape their runtime rejects.
+function getEffectiveTargetInfo(rawHint) {
+    try {
+        const studio = loadStudioConfig();
+        if (studio && (studio.opencodeTarget === 'v1' || studio.opencodeTarget === 'v2')) {
+            return { target: studio.opencodeTarget, source: 'override' };
+        }
+    } catch { /* fall through */ }
+    try {
+        const detected = compat.detectOpencodeVersion();
+        if (detected.major === 1) return { target: 'v1', source: 'binary' };
+        if (detected.major !== null && detected.major !== undefined) return { target: 'v2', source: 'binary' };
+    } catch { /* fall through to inference */ }
+    const raw = rawHint !== undefined ? rawHint : loadRawConfig();
+    return { target: compat.inferTargetFromConfig(raw), source: raw ? 'config' : 'default' };
+}
+
+function getEffectiveTarget(rawHint) {
+    return getEffectiveTargetInfo(rawHint).target;
+}
 
 const aggregateModels = () => {
     const roots = getSearchRoots();
@@ -1359,12 +1384,40 @@ const loadAggregatedConfig = () => {
 app.get('/api/health', (req, res) => res.json({ status: 'ok', version: SERVER_VERSION }));
 
 // OpenCode binary version detection (v2 primary, v1 fallback).
-// The Studio wire format is always canonical V2; disk writes use forWrite()
-// to match this target shape.
+// `effectiveTarget` is what disk writes actually use: the Studio override,
+// then the binary major, then inference from the on-disk config shape
+// (`targetSource` says which one decided).
 app.get('/api/opencode-version', (req, res) => {
     try {
         const info = compat.detectOpencodeVersion();
-        res.json({ ...info, serverVersion: SERVER_VERSION });
+        const effective = getEffectiveTargetInfo();
+        const studio = loadStudioConfig();
+        res.json({
+            ...info,
+            serverVersion: SERVER_VERSION,
+            effectiveTarget: effective.target,
+            targetSource: effective.source,
+            opencodeTargetOverride: studio.opencodeTarget ?? 'auto',
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Pin the on-disk config shape when auto-detection can't see the runtime
+// (broken PATH shims, GUI-only installs). Body: { target: 'auto'|'v1'|'v2' }.
+app.post('/api/opencode-version', (req, res) => {
+    try {
+        const target = req.body && req.body.target;
+        if (target !== 'auto' && target !== 'v1' && target !== 'v2') {
+            return res.status(400).json({ error: 'target must be one of auto, v1, v2' });
+        }
+        const studio = loadStudioConfig();
+        if (target === 'auto') delete studio.opencodeTarget;
+        else studio.opencodeTarget = target;
+        saveStudioConfig(studio);
+        const effective = getEffectiveTargetInfo();
+        res.json({ success: true, opencodeTargetOverride: studio.opencodeTarget ?? 'auto', effectiveTarget: effective.target, targetSource: effective.source });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -1856,7 +1909,7 @@ app.post('/api/config', (req, res) => {
         }
         saveConfig(req.body);
         triggerGitHubAutoSync();
-        res.json({ success: true, target: compat.getTargetShape() });
+        res.json({ success: true, target: getEffectiveTarget() });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -2239,7 +2292,7 @@ app.post('/api/project/rules', (req, res) => {
         atomicWriteFileSync(targetPath, content || '');
         // V2 only discovers AGENTS.md — a CLAUDE.md fallback is ignored by the
         // V2 runtime (kept on disk so v1 fallback readers still see it).
-        const warning = targetName === 'CLAUDE.md' && compat.getTargetShape() === 'v2'
+        const warning = targetName === 'CLAUDE.md' && getEffectiveTarget() === 'v2'
             ? 'OpenCode v2 only reads AGENTS.md; move this guidance into AGENTS.md so it takes effect.'
             : undefined;
         res.json({ success: true, path: targetPath, source: targetName, warning });
@@ -2406,7 +2459,7 @@ function saveConfigForRestore(config) {
         cp = path.join(dir, 'opencode.json');
     }
     // Backups store the canonical shape; convert to the detected runtime shape.
-    atomicWriteFileSync(cp, JSON.stringify(compat.forWrite(config, compat.getTargetShape()), null, 2));
+    atomicWriteFileSync(cp, JSON.stringify(compat.forWrite(config, getEffectiveTarget(config)), null, 2));
 }
 
 function restoreFromBackup(backup, studio) {
@@ -4338,7 +4391,7 @@ app.post('/api/model-policy', (req, res) => {
             if (studio.modelPolicy.enabled) {
                 if (!fs.existsSync(pluginDir)) fs.mkdirSync(pluginDir, { recursive: true });
                 const pluginPath = path.join(pluginDir, GUARDRAIL_PLUGIN_NAME);
-                const pluginCode = modelPolicy.generateGuardrailPlugin(studio.modelPolicy, { target: compat.getTargetShape() });
+                const pluginCode = modelPolicy.generateGuardrailPlugin(studio.modelPolicy, { target: getEffectiveTarget() });
                 atomicWriteFileSync(pluginPath, pluginCode);
             } else {
                 const pluginPath = path.join(pluginDir, GUARDRAIL_PLUGIN_NAME);
@@ -5863,7 +5916,7 @@ function providerKeyOf(config) {
     if (config && config.providers && typeof config.providers === 'object') return 'providers';
     if (config && config.provider && typeof config.provider === 'object') return 'provider';
     // Default to the detected OpenCode major version's native key.
-    return compat.getTargetShape() === 'v1' ? 'provider' : 'providers';
+    return getEffectiveTarget() === 'v1' ? 'provider' : 'providers';
 }
 
 function providerApiKeyOf(prov) {
@@ -5877,7 +5930,7 @@ function withProviderApiKey(prov, apiKey) {
     const next = { ...(prov || {}) };
     // Write to whichever location already exists; prefer V2 `settings` on v2 target.
     const hasSettingsKey = next.settings && typeof next.settings === 'object' && next.settings.apiKey !== undefined;
-    const useSettings = hasSettingsKey || (compat.getTargetShape() === 'v2' && !(next.options && next.options.apiKey));
+    const useSettings = hasSettingsKey || (getEffectiveTarget() === 'v2' && !(next.options && next.options.apiKey));
     if (useSettings) {
         next.settings = { ...(next.settings || {}), apiKey };
     } else {
@@ -6147,7 +6200,7 @@ async function performLinkedSync(profileName, source, { force = false } = {}) {
 
     // Write in the detected OpenCode shape (v2 primary, v1 fallback) so a
     // v2-shaped catalog never lands verbatim on a v1 runtime.
-    merged = compat.forWrite(merged, compat.getTargetShape());
+    merged = compat.forWrite(merged, getEffectiveTarget(localConfig ?? remoteConfig));
 
     const changed = JSON.stringify(merged) !== JSON.stringify(localConfig);
 
@@ -6276,7 +6329,7 @@ app.post('/api/profiles/from-preset', async (req, res) => {
 
         profileManager.createProfileWithConfig(name, initialConfig
             // Store in the detected OpenCode shape (v2 primary, v1 fallback).
-            ? compat.forWrite(initialConfig, compat.getTargetShape())
+            ? compat.forWrite(initialConfig, getEffectiveTarget(initialConfig))
             : { "$schema": "https://opencode.ai/config.json" });
         // Write the link marker directly (markSynced requires an existing marker)
         profileManager.writeLinkedSource(name, initialConfig ? {

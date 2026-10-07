@@ -4,7 +4,7 @@ import { Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { useApp } from "@/lib/context";
-import api, { getPaths, setConfigPath, getBackup, restoreBackup, getGitHubBackupStatus, backupToGitHub, restoreFromGitHub, setGitHubAutoSync, checkForUpdate, performUpdate, getModelPolicy, saveModelPolicy, validateModelPolicy, getOpencodeVersion, getCliConfig, saveCliConfig, type PathsInfo, type BackupData, type UpdateCheckResult, type ModelPolicy as ModelPolicyType, type DelegationViolation, type AgentClassification } from "@/lib/api";
+import api, { getPaths, setConfigPath, getBackup, restoreBackup, getGitHubBackupStatus, backupToGitHub, restoreFromGitHub, setGitHubAutoSync, checkForUpdate, performUpdate, getModelPolicy, saveModelPolicy, validateModelPolicy, getOpencodeVersion, setOpencodeTarget, getCliConfig, saveCliConfig, type PathsInfo, type BackupData, type UpdateCheckResult, type ModelPolicy as ModelPolicyType, type DelegationViolation, type AgentClassification } from "@/lib/api";
 import {
   getUpdatePolicy,
   getSnapshotsEnabled,
@@ -113,6 +113,7 @@ const [systemPrompt, setSystemPrompt] = useState("");
 
   // OpenCode version (v2 primary, v1 fallback) + v2 terminal client config.
   const [opencodeVersion, setOpencodeVersion] = useState<OpencodeVersionInfo | null>(null);
+  const [savingTarget, setSavingTarget] = useState(false);
   const [cliConfig, setCliConfig] = useState<CliConfig>({});
   const [cliExists, setCliExists] = useState(false);
   const [savingCli, setSavingCli] = useState(false);
@@ -208,8 +209,7 @@ const [systemPrompt, setSystemPrompt] = useState("");
     }
   };
 
-  const updateCliConfig = async (updates: Partial<CliConfig>) => {
-    const next = { ...cliConfig, ...updates };
+  const updateCliConfig = async (updates: Partial<CliConfig>) => {    const next = { ...cliConfig, ...updates };
     setCliConfig(next);
     try {
       setSavingCli(true);
@@ -220,6 +220,19 @@ const [systemPrompt, setSystemPrompt] = useState("");
       toast.error(err.response?.data?.error || err.message);
     } finally {
       setSavingCli(false);
+    }
+  };
+
+  const updateOpencodeTarget = async (v: 'auto' | 'v1' | 'v2') => {
+    try {
+      setSavingTarget(true);
+      const updated = await setOpencodeTarget(v);
+      setOpencodeVersion(updated);
+      toast.success(t('toast.settingsSaved'));
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || err.message);
+    } finally {
+      setSavingTarget(false);
     }
   };
 
@@ -447,8 +460,12 @@ const [systemPrompt, setSystemPrompt] = useState("");
                 {t('general.description')}
                 {opencodeVersion && (
                   <span className="block mt-1 text-xs font-mono">
-                    OpenCode {opencodeVersion.raw || 'unknown'} detected — editing in {opencodeVersion.target === 'v2' ? 'V2 native' : 'V1 fallback'} shape
-                    {opencodeVersion.available ? '' : ' (binary not found, assuming V2)'}
+                    OpenCode {opencodeVersion.raw || 'unknown'} detected — editing in {(opencodeVersion.effectiveTarget ?? opencodeVersion.target) === 'v2' ? 'V2 native' : 'V1 fallback'} shape
+                    {opencodeVersion.targetSource === 'override'
+                      ? ' (pinned in Studio settings)'
+                      : opencodeVersion.targetSource === 'config'
+                        ? ' (binary not found, inferred from your opencode.json)'
+                        : opencodeVersion.available ? '' : ' (binary not found, assuming V2)'}
                   </span>
                 )}
               </CardDescription>
@@ -456,10 +473,30 @@ const [systemPrompt, setSystemPrompt] = useState("");
           </CollapsibleTrigger>
           <CollapsibleContent className="animate-scale-in">
             <CardContent className="space-y-6 pt-0">
+              <div className="flex items-center justify-between p-4 bg-background rounded-lg">
+                <div>
+                  <Label>OpenCode config shape</Label>
+                  <p className="text-sm text-muted-foreground">Auto follows the detected runtime (falls back to your opencode.json shape when no binary is found). Pin to V1 if your app rejects V2 configs.</p>
+                </div>
+                <Select
+                  value={opencodeVersion?.opencodeTargetOverride || "auto"}
+                  onValueChange={(v) => updateOpencodeTarget(v as 'auto' | 'v1' | 'v2')}
+                  disabled={savingTarget || !opencodeVersion}
+                >
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Auto</SelectItem>
+                    <SelectItem value="v1">V1</SelectItem>
+                    <SelectItem value="v2">V2</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label>{t('general.theme')}</Label>
-                  {opencodeVersion?.target === 'v2' ? (
+                  {((opencodeVersion?.effectiveTarget ?? opencodeVersion?.target) === 'v2') ? (
                     <>
                       <Select
                         value={(cliConfig.theme as string) || config?.theme || "dark"}

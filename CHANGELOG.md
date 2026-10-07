@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.9.17] - 2026-10-07
+
+### Fixed
+- **v1 runtimes no longer receive v2 configs**: when the `opencode` binary is missing or unparseable (broken PATH shims, GUI-only installs), Studio used to assume v2 and rewrite `opencode.json` into v2 shape, which v1 apps reject. Disk writes now use the new effective target — Studio override, then binary major, then inference from the on-disk config shape — so v1 setups stay v1. Added `POST /api/opencode-version` (`{ target: 'auto'|'v1'|'v2' }`) plus a Settings selector to pin the shape, and the version readout now shows the effective target and how it was chosen.
+
 ## [2.9.16] - 2026-10-07
 
 ### Added

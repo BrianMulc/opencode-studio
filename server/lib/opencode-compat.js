@@ -93,6 +93,48 @@ function getTargetShape(override) {
     return detectOpencodeVersion().target;
 }
 
+// Keys that only exist in the native V2 shape. Any one of them on disk pins
+// the file to v2 — EXCEPT `update`, which Studio's own v1 writes keep
+// alongside `autoupdate`, so it is deliberately not in this list.
+const V2_ONLY_KEYS = new Set([
+    'permissions', 'providers', 'agents', 'commands', 'plugins',
+    'snapshots', 'media', 'references',
+]);
+
+// Keys that only exist in the legacy V1 shape. `update` and
+// `experimental.subagent_depth` are intentionally absent: Studio's v1 writes
+// keep `update` next to `autoupdate`, and both shapes share the experimental
+// key, so neither proves anything.
+const V1_ONLY_KEYS = new Set([
+    'permission', 'provider', 'agent', 'mode', 'command', 'plugin',
+    'snapshot', 'attachment', 'reference', 'autoupdate', 'subagent_depth',
+]);
+
+// Best-effort guess of which shape an on-disk (RAW, never normalized) config
+// is already in. Used only when the opencode binary is missing or its version
+// is unparseable, so Studio never clobbers a v1 setup with v2 keys just
+// because detection failed. Mixed files resolve to v2 (V2 wins on conflict);
+// files with no shape signals default to v2 (forward-looking).
+function inferTargetFromConfig(raw) {
+    if (!isPlainObject(raw)) return 'v2';
+    for (const k of V2_ONLY_KEYS) {
+        if (raw[k] !== undefined) return 'v2';
+    }
+    if (isPlainObject(raw.mcp)) {
+        if (isPlainObject(raw.mcp.servers)) return 'v2';
+        for (const [name, entry] of Object.entries(raw.mcp)) {
+            if (name === 'servers' || name === 'timeout') continue;
+            if (isPlainObject(entry)) return 'v1';
+        }
+    }
+    for (const k of V1_ONLY_KEYS) {
+        if (raw[k] !== undefined) return 'v1';
+    }
+    if (isPlainObject(raw.model) && isPlainObject(raw.model.providers)) return 'v1';
+    if (isPlainObject(raw.experimental) && typeof raw.experimental.mcp_timeout === 'number') return 'v1';
+    return 'v2';
+}
+
 // ---------------------------------------------------------------------------
 // Permissions: V1 map (+ tools map) <-> V2 ordered array
 // ---------------------------------------------------------------------------
@@ -1165,6 +1207,7 @@ module.exports = {
     V1_TO_V2_PROVIDER_ID,
     detectOpencodeVersion,
     getTargetShape,
+    inferTargetFromConfig,
     normalizeToCanonical,
     denormalizeToV1,
     forWrite,

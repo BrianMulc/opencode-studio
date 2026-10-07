@@ -655,6 +655,10 @@ export interface OpencodeVersionInfo {
   isV1: boolean;
   isV2: boolean;
   serverVersion?: string;
+  // What disk writes actually use (override > binary > on-disk shape inference).
+  effectiveTarget?: 'v1' | 'v2';
+  targetSource?: 'override' | 'binary' | 'config' | 'default';
+  opencodeTargetOverride?: 'auto' | 'v1' | 'v2';
 }
 
 export interface SkillFile {

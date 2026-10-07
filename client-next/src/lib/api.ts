@@ -421,6 +421,11 @@ export async function getOpencodeVersion(): Promise<OpencodeVersionInfo> {
   return data;
 }
 
+export async function setOpencodeTarget(target: 'auto' | 'v1' | 'v2'): Promise<OpencodeVersionInfo> {
+  const { data } = await api.post<OpencodeVersionInfo & { success: boolean }>('/opencode-version', { target });
+  return data;
+}
+
 export async function getCliConfig(): Promise<{ exists: boolean; path: string | null; config: CliConfig }> {
   const { data } = await api.get<{ exists: boolean; path: string | null; config: CliConfig }>('/cli-config');
   return data;
