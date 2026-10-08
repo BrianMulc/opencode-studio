@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.9.18] - 2026-10-08
+
+### Fixed
+- **Desktop GUI version detection**: Studio only probed the `opencode` CLI, so GUI-only installs (e.g. OpenCode Desktop 1.18.35 with no working CLI on PATH) were invisible and their v1 configs got rewritten as v2. Studio now also probes the Desktop install (exe product version on Windows, `Info.plist` on macOS, `app-update.yml`/binaries on Linux) and reports it in `GET /api/opencode-version`. When the CLI and Desktop disagree, v1 wins (v1 cannot read v2, but v2 reads v1).
+
 ## [2.9.17] - 2026-10-07
 
 ### Fixed

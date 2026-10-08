@@ -317,8 +317,7 @@ describe('inferTargetFromConfig (v1 GUI protection)', () => {
         expect(c.inferTargetFromConfig({ update: 'auto' })).toBe('v2');
     });
 
-    it('a v2 user config infers v2 and rewrites to v1 cleanly when forced', () => {
-        const userV2 = {
+    it('a v2 user config infers v2 and rewrites to v1 cleanly when forced', () => {        const userV2 = {
             mcp: { servers: { a: { type: 'remote', url: 'http://x', disabled: false } } },
             permissions: [{ action: 'shell', resource: '*', effect: 'allow' }],
             plugins: ['p'],
@@ -329,5 +328,48 @@ describe('inferTargetFromConfig (v1 GUI protection)', () => {
         expect(v1.mcp.a.enabled).toBe(true);
         expect(v1.permission.bash).toBe('allow');
         expect(v1.plugin).toEqual(['p']);
+    });
+});
+
+describe('resolveRuntimeTarget (CLI + Desktop GUI)', () => {
+    const cli = (major) => ({ available: major !== null, raw: major === null ? null : `${major}.0.0`, major });
+    const desk = (major) => ({ available: major !== null, raw: major === null ? null : `${major}.0.0`, major });
+
+    it('returns null when nothing is known', () => {
+        expect(c.resolveRuntimeTarget({ available: false, raw: null, major: null }, { available: false, raw: null, major: null })).toBeNull();
+        expect(c.resolveRuntimeTarget(null, null)).toBeNull();
+    });
+
+    it('single known runtime decides', () => {
+        expect(c.resolveRuntimeTarget(cli(1), desk(null))).toEqual({ target: 'v1', source: 'binary' });
+        expect(c.resolveRuntimeTarget(cli(null), desk(2))).toEqual({ target: 'v2', source: 'desktop' });
+    });
+
+    it('any known v1 pins v1 (v1 cannot read v2, v2 reads v1)', () => {
+        expect(c.resolveRuntimeTarget(cli(2), desk(1))).toEqual({ target: 'v1', source: 'desktop' });
+        expect(c.resolveRuntimeTarget(cli(1), desk(2))).toEqual({ target: 'v1', source: 'binary' });
+    });
+
+    it('all v2 resolves v2', () => {
+        expect(c.resolveRuntimeTarget(cli(2), desk(2))).toEqual({ target: 'v2', source: 'binary' });
+    });
+
+    it('unparseable versions are ignored', () => {
+        expect(c.resolveRuntimeTarget({ available: true, raw: 'weird', major: null }, desk(1))).toEqual({ target: 'v1', source: 'desktop' });
+        expect(c.resolveRuntimeTarget({ available: true, raw: 'weird', major: null }, { available: false, raw: null, major: null })).toBeNull();
+    });
+});
+
+describe('readVersionFromAppUpdateYml', () => {
+    it('extracts a version line and ignores other keys', () => {
+        const fs = require('fs');
+        const os = require('os');
+        const path = require('path');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-yml-'));
+        fs.mkdirSync(path.join(dir, 'resources'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'resources', 'app-update.yml'), 'owner: anomalyco\nrepo: opencode\nversion: 1.18.35\n');
+        expect(c.readVersionFromAppUpdateYml(dir)).toBe('1.18.35');
+        expect(c.readVersionFromAppUpdateYml(path.join(dir, 'missing'))).toBeNull();
+        fs.rmSync(dir, { recursive: true, force: true });
     });
 });

@@ -1248,10 +1248,15 @@ function getEffectiveTargetInfo(rawHint) {
             return { target: studio.opencodeTarget, source: 'override' };
         }
     } catch { /* fall through */ }
+    // CLI binary + Desktop GUI read the same opencode.json. Either one may be
+    // v1 while the other is v2 (or missing); v1 wins because v1 cannot read
+    // v2 while v2 reads v1.
     try {
-        const detected = compat.detectOpencodeVersion();
-        if (detected.major === 1) return { target: 'v1', source: 'binary' };
-        if (detected.major !== null && detected.major !== undefined) return { target: 'v2', source: 'binary' };
+        const resolved = compat.resolveRuntimeTarget(
+            compat.detectOpencodeVersion(),
+            compat.detectDesktopVersion()
+        );
+        if (resolved) return resolved;
     } catch { /* fall through to inference */ }
     const raw = rawHint !== undefined ? rawHint : loadRawConfig();
     return { target: compat.inferTargetFromConfig(raw), source: raw ? 'config' : 'default' };
@@ -1390,10 +1395,12 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', version: SERVER_VE
 app.get('/api/opencode-version', (req, res) => {
     try {
         const info = compat.detectOpencodeVersion();
+        const desktop = compat.detectDesktopVersion();
         const effective = getEffectiveTargetInfo();
         const studio = loadStudioConfig();
         res.json({
             ...info,
+            desktop: { available: desktop.available, raw: desktop.raw, major: desktop.major, path: desktop.path },
             serverVersion: SERVER_VERSION,
             effectiveTarget: effective.target,
             targetSource: effective.source,

@@ -460,12 +460,16 @@ const [systemPrompt, setSystemPrompt] = useState("");
                 {t('general.description')}
                 {opencodeVersion && (
                   <span className="block mt-1 text-xs font-mono">
-                    OpenCode {opencodeVersion.raw || 'unknown'} detected — editing in {(opencodeVersion.effectiveTarget ?? opencodeVersion.target) === 'v2' ? 'V2 native' : 'V1 fallback'} shape
+                    {opencodeVersion.targetSource === 'desktop' && opencodeVersion.desktop?.raw
+                      ? `OpenCode Desktop ${opencodeVersion.desktop.raw} detected`
+                      : `OpenCode ${opencodeVersion.raw || 'unknown'} detected`} — editing in {(opencodeVersion.effectiveTarget ?? opencodeVersion.target) === 'v2' ? 'V2 native' : 'V1 fallback'} shape
                     {opencodeVersion.targetSource === 'override'
                       ? ' (pinned in Studio settings)'
-                      : opencodeVersion.targetSource === 'config'
-                        ? ' (binary not found, inferred from your opencode.json)'
-                        : opencodeVersion.available ? '' : ' (binary not found, assuming V2)'}
+                      : opencodeVersion.targetSource === 'desktop'
+                        ? ' (from your installed desktop app)'
+                        : opencodeVersion.targetSource === 'config'
+                          ? ' (binary not found, inferred from your opencode.json)'
+                          : opencodeVersion.available ? '' : ' (binary not found, assuming V2)'}
                   </span>
                 )}
               </CardDescription>

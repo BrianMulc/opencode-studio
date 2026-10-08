@@ -7,6 +7,9 @@
 //
 // Reference: https://opencode.ai/v2/docs/migrate-v1/
 const { execSync } = require('child_process');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 const V1_TO_V2_ACTION = Object.freeze({
     bash: 'shell',
@@ -91,6 +94,131 @@ function detectOpencodeVersion({ force = false } = {}) {
 function getTargetShape(override) {
     if (override === 'v1' || override === 'v2') return override;
     return detectOpencodeVersion().target;
+}
+
+// ---------------------------------------------------------------------------
+// Desktop GUI version detection
+//
+// The `opencode` CLI is not the only runtime: the OpenCode Desktop app reads
+// the same opencode.json but ships its own version (currently v1 for this
+// user: Desktop 1.18.35 while no working CLI exists on PATH at all). Probing
+// only the CLI therefore misses the runtime that actually matters, so Studio
+// also probes the well-known Desktop install locations.
+// ---------------------------------------------------------------------------
+let desktopCache = { at: 0, result: null };
+const DESKTOP_CACHE_TTL_MS = 60000;
+
+function desktopCandidateDirs() {
+    const dirs = [];
+    try {
+        const home = typeof os.homedir === 'function' ? os.homedir() : null;
+        if (process.platform === 'win32') {
+            const localAppData = process.env.LOCALAPPDATA || (home ? path.join(home, 'AppData', 'Local') : null);
+            if (localAppData) dirs.push(path.join(localAppData, 'Programs', '@opencode-aidesktop'));
+            if (process.env.PROGRAMFILES) dirs.push(path.join(process.env.PROGRAMFILES, '@opencode-aidesktop'));
+            if (process.env['PROGRAMFILES(X86)']) dirs.push(path.join(process.env['PROGRAMFILES(X86)'], '@opencode-aidesktop'));
+        } else if (process.platform === 'darwin') {
+            dirs.push('/Applications/OpenCode.app/Contents');
+            if (home) dirs.push(path.join(home, 'Applications', 'OpenCode.app', 'Contents'));
+        } else {
+            dirs.push('/opt/OpenCode', '/usr/lib/opencode-desktop', '/opt/opencode-desktop');
+            if (home) dirs.push(path.join(home, '.local', 'share', 'opencode-desktop'));
+        }
+    } catch { /* ignore — no candidates */ }
+    return dirs;
+}
+
+// Some Desktop builds stamp their version into resources/app-update.yml.
+function readVersionFromAppUpdateYml(dir) {
+    try {
+        const text = fs.readFileSync(path.join(dir, 'resources', 'app-update.yml'), 'utf8');
+        const m = text.match(/^\s*version\s*:\s*["']?([0-9]+\.[0-9]+\.[0-9]+[^"'\s]*)/m);
+        if (m) return m[1].trim();
+    } catch { /* ignore */ }
+    return null;
+}
+
+// Windows: PE product version of the installed exe (e.g. "1.18.35.0").
+function readWindowsExeVersion(exePath) {
+    try {
+        if (!fs.existsSync(exePath)) return null;
+        const quoted = `'${String(exePath).replace(/'/g, "''")}'`;
+        const out = execSync(
+            `powershell -NoProfile -NonInteractive -Command "(Get-Item ${quoted}).VersionInfo.ProductVersion"`,
+            { encoding: 'utf8', timeout: 15000, windowsHide: true }
+        ).toString().trim();
+        const first = out.split('\n')[0].trim();
+        if (/[0-9]+\.[0-9]+\.[0-9]+/.test(first)) return first;
+    } catch { /* ignore */ }
+    return null;
+}
+
+// macOS: CFBundleShortVersionString from the app bundle's Info.plist.
+function readMacPlistVersion(contentsDir) {
+    try {
+        const text = fs.readFileSync(path.join(contentsDir, 'Info.plist'), 'utf8');
+        const m = text.match(/<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/);
+        if (m) return m[1].trim();
+    } catch { /* ignore */ }
+    return null;
+}
+
+function detectDesktopVersion({ force = false } = {}) {
+    if (!force && desktopCache.result && Date.now() - desktopCache.at < DESKTOP_CACHE_TTL_MS) {
+        return desktopCache.result;
+    }
+    let raw = null;
+    let foundPath = null;
+    for (const dir of desktopCandidateDirs()) {
+        let v = readVersionFromAppUpdateYml(dir);
+        if (!v && process.platform === 'win32') v = readWindowsExeVersion(path.join(dir, 'OpenCode.exe'));
+        if (!v && process.platform === 'darwin') v = readMacPlistVersion(dir);
+        if (!v && process.platform !== 'win32' && process.platform !== 'darwin') {
+            for (const bin of ['opencode-desktop', 'opencode', 'OpenCode']) {
+                const bp = path.join(dir, bin);
+                try {
+                    if (fs.existsSync(bp)) {
+                        const out = execSync(`"${bp}" --version`, {
+                            encoding: 'utf8', timeout: 8000, windowsHide: true,
+                        }).toString().trim();
+                        const m = out.match(/(\d+)\.(\d+)\.(\d+)/);
+                        if (m) { v = m[0]; break; }
+                    }
+                } catch { /* try next */ }
+            }
+        }
+        if (v) { raw = v; foundPath = dir; break; }
+    }
+    const major = parseMajor(raw);
+    const result = {
+        available: raw !== null,
+        raw,
+        major: major ?? null,
+        path: foundPath,
+        // Same forward-looking default as the CLI probe when nothing is found.
+        target: major === 1 ? 'v1' : 'v2',
+        isV1: major === 1,
+        isV2: major !== 1,
+    };
+    desktopCache = { at: Date.now(), result };
+    return result;
+}
+
+// The config file must satisfy the strictest known runtime: v1 cannot read
+// v2, but v2 reads v1 — so any known v1 runtime (CLI or Desktop) pins the
+// target to v1. Returns { target, source } or null when nothing is known.
+function resolveRuntimeTarget(cli, desktop) {
+    const known = [];
+    if (cli && cli.available && cli.major !== null && cli.major !== undefined) {
+        known.push({ major: cli.major, source: 'binary' });
+    }
+    if (desktop && desktop.available && desktop.major !== null && desktop.major !== undefined) {
+        known.push({ major: desktop.major, source: 'desktop' });
+    }
+    if (known.length === 0) return null;
+    const v1 = known.find((k) => k.major === 1);
+    if (v1) return { target: 'v1', source: v1.source };
+    return { target: 'v2', source: known[0].source };
 }
 
 // Keys that only exist in the native V2 shape. Any one of them on disk pins
@@ -1206,6 +1334,9 @@ module.exports = {
     V1_TO_V2_ACTION,
     V1_TO_V2_PROVIDER_ID,
     detectOpencodeVersion,
+    detectDesktopVersion,
+    resolveRuntimeTarget,
+    readVersionFromAppUpdateYml,
     getTargetShape,
     inferTargetFromConfig,
     normalizeToCanonical,
