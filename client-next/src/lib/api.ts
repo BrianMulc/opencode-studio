@@ -964,6 +964,9 @@ export interface LinkedProfileInfo {
   lastSyncedAt: number | null;
   lastSyncStatus: 'ok' | 'error' | 'conflict' | null;
   lastSyncError: string | null;
+  syncSchemaVersion?: number;
+  overridesCount?: number;
+  modelCount?: number | null;
 }
 
 export async function getLinkedProfiles(): Promise<{ linked: Record<string, LinkedProfileInfo> }> {
@@ -973,8 +976,13 @@ export async function getLinkedProfiles(): Promise<{ linked: Record<string, Link
 
 export interface SyncResult {
   changed: boolean;
+  healedLegacySync?: boolean;
   conflict?: boolean;
   overridesPreserved?: number;
+  addedModels?: string[];
+  removedModels?: string[];
+  updatedModels?: string[];
+  modelCount?: number;
   message?: string;
   error?: string;
 }
@@ -986,6 +994,11 @@ export async function syncLinkedProfile(name: string, force = false): Promise<Sy
 
 export async function syncAllLinkedProfiles(): Promise<{ results: Record<string, SyncResult> }> {
   const { data } = await api.post('/profiles/sync-all', {});
+  return data;
+}
+
+export async function linkProfileToPreset(name: string, presetId: string): Promise<{ success: boolean; linked: boolean; name: string; warning?: string; sync?: SyncResult }> {
+  const { data } = await api.post(`/profiles/${encodeURIComponent(name)}/link`, { presetId });
   return data;
 }
 

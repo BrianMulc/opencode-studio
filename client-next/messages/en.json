@@ -771,7 +771,16 @@
     "resetting": "Resetting...",
     "resetSuccess": "{name}: reset to catalog",
     "resetFailed": "Reset failed",
-    "resetFailedWithError": "Reset failed: {error}"
+    "resetFailedWithError": "Reset failed: {error}",
+    "linkToCatalog": "Link to catalog",
+    "linkTitle": "Link \"{name}\" to live catalog",
+    "linkDescription": "Attach a live BattleMage catalog preset so models stay up to date automatically. Your existing API keys, MCP servers, custom providers, agents, and settings are kept.",
+    "linkConfirm": "Link & Sync",
+    "linking": "Linking...",
+    "linkSuccess": "{name}: linked and synced with live catalog",
+    "linkFailed": "Failed to link profile",
+    "linkFailedWithError": "Failed to link profile: {error}",
+    "modelsCount": "{count} models"
   },
   "logs": {
     "disconnected": "Log stream disconnected",

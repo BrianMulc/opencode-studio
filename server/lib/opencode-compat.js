@@ -114,9 +114,19 @@ function desktopCandidateDirs() {
         const home = typeof os.homedir === 'function' ? os.homedir() : null;
         if (process.platform === 'win32') {
             const localAppData = process.env.LOCALAPPDATA || (home ? path.join(home, 'AppData', 'Local') : null);
-            if (localAppData) dirs.push(path.join(localAppData, 'Programs', '@opencode-aidesktop'));
-            if (process.env.PROGRAMFILES) dirs.push(path.join(process.env.PROGRAMFILES, '@opencode-aidesktop'));
-            if (process.env['PROGRAMFILES(X86)']) dirs.push(path.join(process.env['PROGRAMFILES(X86)'], '@opencode-aidesktop'));
+            if (localAppData) {
+                dirs.push(path.join(localAppData, 'Programs', '@opencode-aidesktop'));
+                dirs.push(path.join(localAppData, 'Programs', 'OpenCode'));
+                dirs.push(path.join(localAppData, 'OpenCode'));
+            }
+            if (process.env.PROGRAMFILES) {
+                dirs.push(path.join(process.env.PROGRAMFILES, '@opencode-aidesktop'));
+                dirs.push(path.join(process.env.PROGRAMFILES, 'OpenCode'));
+            }
+            if (process.env['PROGRAMFILES(X86)']) {
+                dirs.push(path.join(process.env['PROGRAMFILES(X86)'], '@opencode-aidesktop'));
+                dirs.push(path.join(process.env['PROGRAMFILES(X86)'], 'OpenCode'));
+            }
         } else if (process.platform === 'darwin') {
             dirs.push('/Applications/OpenCode.app/Contents');
             if (home) dirs.push(path.join(home, 'Applications', 'OpenCode.app', 'Contents'));
@@ -788,6 +798,16 @@ function normalizeModelOptionsToSettings(model) {
         else delete out.settings;
     }
     delete out.options;
+    // V1 object `interleaved: { field: "reasoning_content" }` maps to V2
+    // `compatibility.reasoningField` so native V2 reasoning streaming works
+    // cleanly while preserving `interleaved` for V1 round-trips.
+    if (isPlainObject(out.interleaved) && typeof out.interleaved.field === 'string' && out.interleaved.field) {
+        const compatBag = isPlainObject(out.compatibility) ? { ...out.compatibility } : {};
+        if (compatBag.reasoningField === undefined) {
+            compatBag.reasoningField = out.interleaved.field;
+        }
+        out.compatibility = compatBag;
+    }
     // Accepted-but-unsupported V1 scalars (release_date, attachment, reasoning,
     // temperature, experimental, interleaved, non-deprecated status, ...) have
     // no V2 behavior, but we PRESERVE them verbatim so switching versions or
@@ -1186,6 +1206,7 @@ function denormalizeProviderEntryToV1(entry) {
         const { baseURL, apiKey, timeout, headerTimeout, chunkTimeout, setCacheKey, ...rest } = out.settings;
         const options = isPlainObject(out.options) ? { ...out.options } : {};
         if (baseURL !== undefined && out.api === undefined) out.api = baseURL;
+        if (baseURL !== undefined && options.baseURL === undefined) options.baseURL = baseURL;
         if (apiKey !== undefined && options.apiKey === undefined) options.apiKey = apiKey;
         if (timeout !== undefined && options.timeout === undefined) options.timeout = timeout;
         if (headerTimeout !== undefined && options.headerTimeout === undefined) options.headerTimeout = headerTimeout;
@@ -1228,6 +1249,9 @@ function denormalizeModelToV1(model) {
             out.modalities = { input: out.capabilities.input, output: out.capabilities.output };
         }
         delete out.capabilities;
+    }
+    if (isPlainObject(out.compatibility) && typeof out.compatibility.reasoningField === 'string' && out.compatibility.reasoningField && out.interleaved === undefined) {
+        out.interleaved = { field: out.compatibility.reasoningField };
     }
     if (out.disabled === true) {
         out.status = 'deprecated';

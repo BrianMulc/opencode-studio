@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
-import { getConfig, saveConfig as apiSaveConfig, getSkills, getPlugins, toggleSkill as apiToggleSkill, togglePlugin as apiTogglePlugin, checkHealth, checkVersion, getPendingAction, clearPendingAction, syncAuto, syncPush, getSyncStatus, type PendingAction, type VersionCheck } from '@/lib/api';
+import { getConfig, saveConfig as apiSaveConfig, getSkills, getPlugins, toggleSkill as apiToggleSkill, togglePlugin as apiTogglePlugin, checkHealth, checkVersion, getPendingAction, clearPendingAction, syncAuto, syncPush, getSyncStatus, syncAllLinkedProfiles, type PendingAction, type VersionCheck } from '@/lib/api';
 import { isUpdateInProgress, clearUpdateInProgress } from '@/lib/update-state';
 import { getMcpServers, setMcpServers, isMcpEnabled, withMcpEnabled } from '@/lib/opencode-compat';
 import type { OpencodeConfig, MCPConfig, SkillInfo, PluginInfo } from '@/types';
@@ -66,6 +66,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const checkedPendingRef = useRef(false);
   const versionCheckedRef = useRef(false);
   const autoSyncCheckedRef = useRef(false);
+  const linkedSyncCheckedRef = useRef(false);
   const wasDisconnectedRef = useRef(false);
 
   const refreshData = useCallback(async () => {
@@ -143,6 +144,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     };
 
+    const checkLinkedCatalogSync = async () => {
+      if (linkedSyncCheckedRef.current) return;
+      linkedSyncCheckedRef.current = true;
+      try {
+        const { results } = await syncAllLinkedProfiles();
+        const anyChanged = Object.values(results || {}).some((r) => r && r.changed);
+        if (anyChanged) {
+          await refreshData();
+        }
+      } catch {}
+    };
+
     const checkAutoSync = async () => {
       if (autoSyncCheckedRef.current) return;
       autoSyncCheckedRef.current = true;
@@ -188,6 +201,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setConnected(true);
             checkServerVersion();
             checkAutoSync();
+            checkLinkedCatalogSync();
             refreshData();
             checkForPendingAction();
           }
@@ -215,6 +229,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     checkServerVersion();
     checkAutoSync();
+    checkLinkedCatalogSync();
     refreshData();
 
     const interval = setInterval(pollHealth, 3000);

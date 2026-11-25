@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.9.19] - 2026-11-25
+
+### Fixed
+- **Linked catalog sync across V1 & V2 configs**: `performLinkedSync` and `from-preset` previously saved `lastSyncedCatalog` in raw V1 shape while writing `opencode.json` through `compat.forWrite()` (changing keys and key order on both V1 and V2), causing every subsequent sync to misclassify untouched catalog models as user overrides — leaving retired BattleMage models behind and blocking model updates. Startup auto-sync and `/api/profiles/sync-all` also dropped `lastSyncedCatalog` by passing summary entries from `getLinkedProfiles()`. Sync now compares canonical V2-normalized configs with key-order-independent equality (`server/lib/linked-sync.js`), always reads the full marker file from disk, and automatically runs a one-time self-healing refresh on legacy (`syncSchemaVersion < 2`) profiles while preserving API keys, unmanaged providers, MCP servers, agents, commands, skills, and top-level settings.
+- **`opencode.jsonc` & dual-file sync**: Linked profile sync now reads via `jsonc-parser`, updates `opencode.jsonc`-only profiles in place, and keeps managed providers synchronized in sibling `opencode.jsonc` files when both `.json` and `.jsonc` coexist so stale models in `.jsonc` cannot shadow synced updates.
+- **V1 `options.baseURL` & V2 `compatibility.reasoningField` compatibility**: Preserves `options.baseURL` alongside `api` on V1 writes, maps V1 `interleaved.field` to V2 `compatibility.reasoningField`, and expands Windows Desktop detection to cover `%LOCALAPPDATA%\Programs\OpenCode` installs.
+- **Immediate UI refresh after startup catalog sync**: The frontend now triggers linked-profile catalog sync on load (coalesced server-side with startup auto-sync) and refreshes the active config automatically when models change, plus falls back seamlessly between `battlemage.tail06281.ts.net` and `hub.havsys.com`.
+
+### Added
+- **Link existing profiles to live catalog (`POST /api/profiles/:name/link`)**: Unlinked profiles (such as `default` or pre-2.8.1 profiles) now have a one-click **Link to catalog** action on the Profiles page to attach a BattleMage preset and sync models while keeping all existing API keys, MCP servers, agents, custom providers, and settings. Linked profile cards now also show the synced model count.
+
 ## [2.9.18] - 2026-10-08
 
 ### Fixed

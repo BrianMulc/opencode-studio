@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Plus, Trash, Check, Edit, CardStack, Play, Copy, Download, Reload, Link } from "@nsmr/pixelart-react"
-import { getProfiles, createProfile, deleteProfile, activateProfile, renameProfile, duplicateProfile, getProfilePresets, createProfileFromPreset, getLinkedProfiles, syncLinkedProfile, resetProfileToCatalog, type ProfileList, type ProfilePreset, type LinkedProfileInfo } from "@/lib/api";
+import { getProfiles, createProfile, deleteProfile, activateProfile, renameProfile, duplicateProfile, getProfilePresets, createProfileFromPreset, getLinkedProfiles, syncLinkedProfile, resetProfileToCatalog, linkProfileToPreset, type ProfileList, type ProfilePreset, type LinkedProfileInfo } from "@/lib/api";
 import { useApp } from "@/lib/context";
 import { PageHelp } from "@/components/page-help";
 
@@ -51,6 +51,9 @@ export default function ProfilesPage() {
   const [syncingProfile, setSyncingProfile] = useState<string | null>(null);
   const [resetTarget, setResetTarget] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
+  const [linkTarget, setLinkTarget] = useState<string | null>(null);
+  const [linkPresetId, setLinkPresetId] = useState<string | null>(null);
+  const [linking, setLinking] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [renamingTarget, setRenamingTarget] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -133,6 +136,30 @@ export default function ProfilesPage() {
       toast.error(msg ? t('resetFailedWithError', { error: msg }) : t('resetFailed'));
     } finally {
       setResetting(false);
+    }
+  };
+
+  const handleLinkToCatalog = async () => {
+    if (!linkTarget || !linkPresetId) return;
+    try {
+      setLinking(true);
+      const res = await linkProfileToPreset(linkTarget, linkPresetId);
+      if (res.warning) {
+        toast.warning(t('linkSuccess', { name: linkTarget }), { description: res.warning, duration: 10000 });
+      } else {
+        toast.success(t('linkSuccess', { name: linkTarget }));
+      }
+      const linkedName = linkTarget;
+      setLinkTarget(null);
+      setLinkPresetId(null);
+      loadProfiles();
+      loadLinked();
+      if (data?.active === linkedName) await refreshData();
+    } catch (e) {
+      const msg = getErrorMessage(e);
+      toast.error(msg ? t('linkFailedWithError', { error: msg }) : t('linkFailed'));
+    } finally {
+      setLinking(false);
     }
   };
 
@@ -427,7 +454,7 @@ export default function ProfilesPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-2">
-                {linked[profile] && (
+                {linked[profile] ? (
                   <Button
                     className="w-full"
                     variant="secondary"
@@ -437,7 +464,19 @@ export default function ProfilesPage() {
                     <Reload className={`h-4 w-4 mr-2 ${syncingProfile === profile ? 'animate-spin' : ''}`} />
                     {syncingProfile === profile ? t('syncing') : t('syncNow')}
                   </Button>
-                )}
+                ) : presets.length > 0 ? (
+                  <Button
+                    className="w-full"
+                    variant="outline"
+                    onClick={() => {
+                      setLinkTarget(profile);
+                      setLinkPresetId(presets[0]?.id ?? null);
+                    }}
+                  >
+                    <Link className="h-4 w-4 mr-2" />
+                    {t('linkToCatalog')}
+                  </Button>
+                ) : null}
                 {isActive ? (
                   <Button disabled className="w-full" variant="secondary">
                      <Check className="h-4 w-4 mr-2" />
@@ -456,11 +495,14 @@ export default function ProfilesPage() {
                 )}
                 {linked[profile] && (
                   <>
-                    <p className="text-[11px] text-muted-foreground text-center">
+                    <p
+                      className="text-[11px] text-muted-foreground text-center"
+                      title={linked[profile].lastSyncError || undefined}
+                    >
                       {linked[profile].lastSyncStatus === 'error'
                         ? t('syncErrorNote')
                         : linked[profile].lastSyncedAt
-                          ? t('lastSynced', { time: new Date(linked[profile].lastSyncedAt!).toLocaleString() })
+                          ? `${t('lastSynced', { time: new Date(linked[profile].lastSyncedAt!).toLocaleString() })}${typeof linked[profile].modelCount === 'number' ? ` · ${t('modelsCount', { count: linked[profile].modelCount })}` : ''}`
                           : t('neverSynced')}
                     </p>
                     <div className="flex items-center justify-center">
@@ -539,6 +581,45 @@ export default function ProfilesPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => { setDuplicatingTarget(null); setDuplicateValue(""); }}>{t('cancel')}</Button>
             <Button onClick={handleDuplicate} disabled={duplicating}>{t('duplicate')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!linkTarget} onOpenChange={(open) => { if (!open) { setLinkTarget(null); setLinkPresetId(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('linkTitle', { name: linkTarget ?? '' })}</DialogTitle>
+            <DialogDescription>
+              {t('linkDescription')}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {presets.map((preset) => {
+              const selected = linkPresetId === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => setLinkPresetId(preset.id)}
+                  className={`w-full text-left p-3 rounded-lg border transition-all ${selected ? 'border-primary bg-primary/10 ring-1 ring-primary' : 'border-border hover:border-primary/50 hover:bg-muted/50'}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-sm">{preset.name}</span>
+                    <Badge variant="outline" className="font-mono text-[10px] font-normal shrink-0">
+                      <Link className="h-3 w-3 mr-1" />
+                      {t('presetLinkedBadge')}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">{preset.description}</p>
+                </button>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setLinkTarget(null); setLinkPresetId(null); }} disabled={linking}>{t('cancel')}</Button>
+            <Button onClick={handleLinkToCatalog} disabled={!linkPresetId || linking}>
+              {linking ? t('linking') : t('linkConfirm')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

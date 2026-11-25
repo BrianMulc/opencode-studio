@@ -171,7 +171,7 @@ function writeLinkedSource(name, source) {
     if (!fs.existsSync(dir)) throw new Error('Profile not found');
     const markerPath = path.join(dir, LINKED_SOURCE_FILE);
     const tmpPath = `${markerPath}.${Date.now()}.tmp`;
-    fs.writeFileSync(tmpPath, JSON.stringify({ ...source, linkedAt: Date.now() }, null, 2), 'utf8');
+    fs.writeFileSync(tmpPath, JSON.stringify({ linkedAt: Date.now(), ...source }, null, 2), 'utf8');
     // Windows rename cannot overwrite an existing destination — remove first.
     try { if (fs.existsSync(markerPath)) fs.unlinkSync(markerPath); } catch {}
     fs.renameSync(tmpPath, markerPath);
@@ -200,7 +200,10 @@ function getLinkedProfiles() {
                 linkedAt: source.linkedAt || null,
                 lastSyncedAt: source.lastSyncedAt || null,
                 lastSyncStatus: source.lastSyncStatus || null,
-                lastSyncError: source.lastSyncError || null
+                lastSyncError: source.lastSyncError || null,
+                syncSchemaVersion: source.syncSchemaVersion || 1,
+                overridesCount: typeof source.overridesCount === 'number' ? source.overridesCount : 0,
+                modelCount: typeof source.modelCount === 'number' ? source.modelCount : null
             };
         }
     }

@@ -373,3 +373,24 @@ describe('readVersionFromAppUpdateYml', () => {
         fs.rmSync(dir, { recursive: true, force: true });
     });
 });
+
+describe('v2.9.19 provider baseURL and interleaved reasoningField compat', () => {
+    it('preserves options.baseURL alongside api when denormalizing to V1', () => {
+        const canonical = c.normalizeToCanonical({
+            provider: {
+                battlemage: {
+                    npm: '@ai-sdk/openai-compatible',
+                    options: { baseURL: 'http://100.91.253.103:8800/v1', apiKey: '', timeout: 1800000 },
+                    models: {
+                        'sage-a15': { name: 'Sage-A1.5', tool_call: true, interleaved: { field: 'reasoning_content' } },
+                    },
+                },
+            },
+        });
+        expect(canonical.providers.battlemage.models['sage-a15'].compatibility.reasoningField).toBe('reasoning_content');
+        const v1 = c.forWrite(canonical, 'v1');
+        expect(v1.provider.battlemage.api).toBe('http://100.91.253.103:8800/v1');
+        expect(v1.provider.battlemage.options.baseURL).toBe('http://100.91.253.103:8800/v1');
+        expect(v1.provider.battlemage.models['sage-a15'].interleaved).toEqual({ field: 'reasoning_content' });
+    });
+});
