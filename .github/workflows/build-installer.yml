@@ -109,7 +109,7 @@ jobs:
           if-no-files-found: error
 
   build-macos-dmg:
-    runs-on: macos-latest
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
@@ -225,6 +225,7 @@ jobs:
 
   release:
     needs: [build-windows-installer, build-macos-dmg, build-linux-appimage]
+    if: ${{ always() && needs.build-windows-installer.result == 'success' && needs.build-linux-appimage.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Download release artifacts
@@ -238,6 +239,7 @@ jobs:
         with:
           name: OpenCode Studio v${{ needs.build-windows-installer.outputs.app_version }}
           generate_release_notes: true
+          fail_on_unmatched_files: false
           files: |
             release-artifacts/OpenCodeStudio-Setup.exe
             release-artifacts/OpenCodeStudio-macOS-*.dmg

@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.9.20] - 2026-11-25
+
+### Changed
+- **Release CI reliability**: Switched the macOS installer runner from congested `macos-latest` (`macos-26`) to `macos-15` and allowed GitHub Releases to publish succeeded Windows/Linux installers even if GitHub's macOS runner pool cancels a queued job.
+
 ## [2.9.19] - 2026-11-25
 
 ### Fixed
